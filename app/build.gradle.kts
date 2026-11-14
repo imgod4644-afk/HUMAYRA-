@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.humayra.goddess"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.humayra.goddess"
         minSdk = 26
