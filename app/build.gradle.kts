@@ -14,19 +14,46 @@ android {
         versionName = "1.0.0"
         ndk { abiFilters += "arm64-v8a" }
     }
-    buildTypes {
-        release { isMinifyEnabled = false }
-    }
+    buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
     packaging {
         jniLibs { useLegacyPackaging = true }
-        resources {
-            excludes += listOf("META-INF/INDEX.LIST", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-        }
+        resources { excludes += listOf("META-INF/INDEX.LIST", "META-INF/*.SF", "META-INF/*.D
+cd ~/HUMAYRA- || exit 1
+cat << 'HUMAYRA_END' > app/build.gradle.kts
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.humayra.goddess"
+    compileSdk = 35
+    defaultConfig {
+        applicationId = "com.humayra.goddess"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0.0"
+        ndk { abiFilters += "arm64-v8a" }
+    }
+    buildTypes { release { isMinifyEnabled = false } }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    packaging {
+        jniLibs { useLegacyPackaging = true }
+        resources { excludes += listOf("META-INF/INDEX.LIST", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA") }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
