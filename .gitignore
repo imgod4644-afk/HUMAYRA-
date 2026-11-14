@@ -1,0 +1,13 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+*.dex
+.idea/
+*.iml
+.cxx/
+node_modules/
+app/src/main/assets/js/*.js
+*.gguf

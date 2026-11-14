@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#0B0E14}canvas{display:block;width:100%;height:100%;touch-action:none}</style>
+</head><body>
+<script src="js/three.min.js"></script><script src="js/GLTFLoader.js"></script>
+<script src="js/OrbitControls.js"></script><script src="js/three-vrm.min.js"></script>
+<script>
+let accentHex='#7C9CFF',pose='stand',portrait=false,speaking=false;
+const scene=new THREE.Scene(); scene.background=new THREE.Color('#0B0E14');
+const camera=new THREE.PerspectiveCamera(32,innerWidth/innerHeight,0.05,50);
+camera.position.set(0,1.15,2.75);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputEncoding=THREE.sRGBEncoding; document.body.appendChild(renderer.domElement);
+const controls=new THREE.OrbitControls(camera,renderer.domElement);
+controls.target.set(0,0.92,0); controls.enableDamping=true; controls.minDistance=0.55; controls.maxDistance=5;
+scene.add(new THREE.HemisphereLight(0xdbeafe,0x1e293b,1.0));
+const dir=new THREE.DirectionalLight(0xffffff,1.3); dir.position.set(1.2,2.4,2); scene.add(dir);
+const rim=new THREE.PointLight(accentHex,2.0,8); rim.position.set(-1.3,1.6,-1.2); scene.add(rim);
+const pad=new THREE.Mesh(new THREE.RingGeometry(0.55,0.62,48),new THREE.MeshBasicMaterial({color:accentHex,side:THREE.DoubleSide,transparent:true,opacity:0.65}));
+pad.rotation.x=-Math.PI/2; pad.position.y=0.01; scene.add(pad);
+const fbRoot=new THREE.Group(); scene.add(fbRoot);
+const bodyMat=new THREE.MeshStandardMaterial({color:0x1b2438,metalness:0.45,roughness:0.35});
+const glowMat=new THREE.MeshBasicMaterial({color:accentHex});
+const skinMat=new THREE.MeshStandardMaterial({color:0x2b364f,metalness:0.2,roughness:0.5});
+const fb={torso:new THREE.Group(),head:new THREE.Group(),lArm:new THREE.Group(),rArm:new THREE.Group(),lLeg:new THREE.Group(),rLeg:new THREE.Group()};
+fb.torso.position.y=0.85; fbRoot.add(fb.torso);
+const chest=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.12,0.48,16),bodyMat); chest.position.y=0.22; fb.torso.add(chest);
+const core=new THREE.Mesh(new THREE.OctahedronGeometry(0.065),glowMat); core.position.set(0,0.28,0.13); fb.torso.add(core);
+fb.head.position.y=0.58; fb.torso.add(fb.head);
+fb.head.add(new THREE.Mesh(new THREE.SphereGeometry(0.145,24,24),skinMat));
+const lEye=new THREE.Mesh(new THREE.BoxGeometry(0.042,0.018,0.02),glowMat); lEye.position.set(-0.045,0.02,0.135);
+const rEye=lEye.clone(); rEye.position.x=0.045; fb.head.add(lEye,rEye);
+const mouth=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.014,0.02),glowMat); mouth.position.set(0,-0.055,0.132); fb.head.add(mouth);
+const halo=new THREE.Mesh(new THREE.TorusGeometry(0.22,0.008,10,48),glowMat); halo.position.set(0,0.14,-0.04); fb.head.add(halo);
+function limb(g,x,y,r,h){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r*0.8,h,12),bodyMat);m.position.y=-h/2;g.position.set(x,y,0);g.add(m);return g;}
+fb.torso.add(limb(fb.lArm,-0.22,0.42,0.045,0.46),limb(fb.rArm,0.22,0.42,0.045,0.46));
+fbRoot.add(limb(fb.lLeg,-0.09,0.78,0.055,0.76),limb(fb.rLeg,0.09,0.78,0.055,0.76));
+let vrm=null,customObj=null,mixer=null,hipBaseY=0;
+function clearCustom(){if(customObj){scene.remove(customObj);customObj=null;}vrm=null;mixer=null;}
+window.loadModel=function(url){
+  clearCustom(); fbRoot.visible=false;
+  const loader=new THREE.GLTFLoader();
+  if(window.THREE_VRM&&THREE_VRM.VRMLoaderPlugin) loader.register(p=>new THREE_VRM.VRMLoaderPlugin(p));
+  loader.load(url,gltf=>{
+    vrm=gltf.userData&&gltf.userData.vrm?gltf.userData.vrm:null;
+    if(vrm&&THREE_VRM.VRMUtils) THREE_VRM.VRMUtils.rotateVRM0(vrm);
+    const obj=vrm?vrm.scene:gltf.scene;
+    const box=new THREE.Box3().setFromObject(obj); const sz=new THREE.Vector3(); box.getSize(sz);
+    const sc=1.62/Math.max(sz.y,0.01); obj.scale.setScalar(sc);
+    const nb=new THREE.Box3().setFromObject(obj); const ctr=new THREE.Vector3(); nb.getCenter(ctr);
+    obj.position.set(-ctr.x,-nb.min.y,-ctr.z);
+    if(vrm){const h=vb('hips');hipBaseY=h?h.position.y:0;}
+    if(!vrm&&gltf.animations&&gltf.animations.length){mixer=new THREE.AnimationMixer(obj);mixer.clipAction(gltf.animations[0]).play();}
+    customObj=obj; scene.add(obj);
+  },undefined,()=>{fbRoot.visible=true;});
+};
+function vb(n){try{return vrm&&vrm.humanoid?vrm.humanoid.getNormalizedBoneNode(n):null;}catch(e){return null;}}
+let camGoal=new THREE.Vector3(0,1.15,2.75),tgtGoal=new THREE.Vector3(0,0.92,0),camLerp=0;
+window.setPose=function(p){
+  if(p==='portrait'){portrait=!portrait;camLerp=1;
+    if(portrait){camGoal.set(0,1.48,0.92);tgtGoal.set(0,1.45,0);}
+    else{camGoal.set(0,1.15,2.75);tgtGoal.set(0,0.92,0);}
+  }else{pose=p;}
+};
+window.setTheme=function(bg,acc){
+  scene.background=new THREE.Color(bg); rim.color.set(acc); pad.material.color.set(acc); glowMat.color.set(acc);
+};
+window.setSpeaking=function(s){speaking=!!s;};
+window.resetFallback=function(){clearCustom();fbRoot.visible=true;};
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+const clock=new THREE.Clock();
+(function tick(){
+  requestAnimationFrame(tick);
+  const dt=Math.min(clock.getDelta(),0.05),t=clock.elapsedTime;
+  const blink=(t%3.4)>3.25?1:0,mouthOpen=speaking?(0.25+Math.abs(Math.sin(t*15))*0.75):0;
+  if(camLerp>0.01){camera.position.lerp(camGoal,0.12);controls.target.lerp(tgtGoal,0.12);camLerp*=0.9;}
+  if(fbRoot.visible){
+    const sit=pose==='sit'; fb.torso.position.y=THREE.MathUtils.lerp(fb.torso.position.y,(sit?0.48:0.85)+Math.sin(t*2.1)*0.012,0.12);
+    fb.lLeg.position.y=fb.rLeg.position.y=sit?0.44:0.78;
+    fb.lLeg.rotation.x=fb.rLeg.rotation.x=THREE.MathUtils.lerp(fb.lLeg.rotation.x,sit?-1.35:0,0.12);
+    fb.rArm.rotation.z=pose==='wave'?2.3+Math.sin(t*7)*0.35:0.08; fb.lArm.rotation.z=-0.08;
+    fb.head.rotation.z=pose==='smile'?0.1:Math.sin(t*0.9)*0.03;
+    lEye.scale.y=rEye.scale.y=blink?0.1:1; mouth.scale.y=1+mouthOpen*2.5; halo.rotation.z=t*0.8;
+  }
+  if(vrm){
+    const em=vrm.expressionManager;
+    if(em){em.setValue('blink',blink);em.setValue('aa',mouthOpen);em.setValue('happy',pose==='smile'||pose==='wave'?0.75:0);}
+    const la=vb('leftUpperArm'),ra=vb('rightUpperArm'),hd=vb('head'),hp=vb('hips'),ll=vb('leftUpperLeg'),rl=vb('rightUpperLeg'),lk=vb('leftLowerLeg'),rk=vb('rightLowerLeg');
+    if(la)la.rotation.z=1.18; if(ra)ra.rotation.z=pose==='wave'?-0.2+Math.sin(t*7)*0.35:-1.18;
+    if(hd)hd.rotation.y=Math.sin(t*0.8)*0.06;
+    const sit=pose==='sit';
+    if(hp)hp.position.y=hipBaseY-(sit?0.35:0)+Math.sin(t*2)*0.008;
+    if(ll)ll.rotation.x=sit?-1.25:0; if(rl)rl.rotation.x=sit?-1.25:0;
+    if(lk)lk.rotation.x=sit?1.35:0; if(rk)rk.rotation.x=sit?1.35:0;
+    vrm.update(dt);
+  }
+  if(mixer)mixer.update(dt);
+  controls.update(); renderer.render(scene,camera);
+})();
+</script></body></html>

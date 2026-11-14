@@ -1,1 +1,46 @@
+name: Build HUMAYRA APK
 
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Offline 3D VRM Engine
+        run: |
+          mkdir -p app/src/main/assets/js
+          curl -fsSL https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js -o app/src/main/assets/js/three.min.js
+          curl -fsSL https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js -o app/src/main/assets/js/GLTFLoader.js
+          curl -fsSL https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js -o app/src/main/assets/js/OrbitControls.js
+          curl -fsSL https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@1.0.6/lib/three-vrm.min.js -o app/src/main/assets/js/three-vrm.min.js
+          ls -lh app/src/main/assets/js/
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          validate-wrappers: false
+
+      - name: Build HUMAYRA Debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload HUMAYRA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HUMAYRA-Debug-APK
+          path: app/build/outputs/apk/debug/*.apk
