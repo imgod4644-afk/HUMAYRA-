@@ -67,7 +67,7 @@ object SettingsSheet {
                 cfg.cloudApiKey = etKey.text.toString().trim(); cfg.cloudModel = etModel.text.toString().trim()
                 cfg.stageBgColor = etBg.text.toString().ifBlank { "#0B0E14" }; cfg.stageAccentColor = etAcc.text.toString().ifBlank { "#7C9CFF" }
                 cfg.ttsPitch = etPitch.text.toString().toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1.05f
-                cfg.ttsSpeed = etSpeed.text.toString().toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1.02f; cb.onSaved()
+                cfg.ttsSpeed = etSpeed.text.toString().toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1.02f; android.widget.Toast.makeText(ctx, "✅ Settings Saved", android.widget.Toast.LENGTH_SHORT).show(); cb.onSaved()
             }.setNegativeButton("Cancel", null).show()
     }
     private fun showAvatarPicker(ctx: Context, cfg: AppConfig, onDone: () -> Unit) {

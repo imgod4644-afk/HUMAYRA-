@@ -25,7 +25,7 @@ class AppConfig(context: Context) {
     var cloudProvider: String get() = s("cloud_provider", "OPENROUTER"); set(v) = ps("cloud_provider", v)
     var cloudBaseUrl: String get() = s("cloud_url", "https://openrouter.ai/api/v1/chat/completions"); set(v) = ps("cloud_url", v)
     var cloudApiKey: String get() = s("cloud_key", ""); set(v) = ps("cloud_key", v)
-    var cloudModel: String get() = s("cloud_model", "nousresearch/hermes-3-llama-3.1-405b:free"); set(v) = ps("cloud_model", v)
+    var cloudModel: String get() = s("cloud_model", "openrouter/free"); set(v) = ps("cloud_model", v)
     var activeAvatarPath: String get() = s("active_avatar_path", ""); set(v) = ps("active_avatar_path", v)
     var stageBgColor: String get() = s("stage_bg", "#0B0E14"); set(v) = ps("stage_bg", v)
     var stageAccentColor: String get() = s("stage_accent", "#7C9CFF"); set(v) = ps("stage_accent", v)

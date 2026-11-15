@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState); setContentView(R.layout.activity_main)
+        super.onCreate(savedInstanceState); setContentView(R.layout.activity_main); val rv = findViewById<android.view.View>(R.id.rootLayout); androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rv) { v, i -> val b = i.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.ime()); val p = (8 * resources.displayMetrics.density).toInt(); v.setPadding(b.left + p, b.top + p / 2, b.right + p, b.bottom + p / 2); i }
         cfg = AppConfig(this); mem = MemoryStore(this); stage = StageController(this, findViewById(R.id.webStage)).apply { init() }
         tvName = findViewById(R.id.tvName); tvMode = findViewById(R.id.tvModeBadge); tvHealth = findViewById(R.id.tvHealthBadge)
         tvStatus = findViewById(R.id.tvStatus); tvConvo = findViewById(R.id.tvConversation); scrollConvo = findViewById(R.id.scrollConvo)
