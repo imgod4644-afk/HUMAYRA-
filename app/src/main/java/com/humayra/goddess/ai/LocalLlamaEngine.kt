@@ -54,7 +54,6 @@ object LocalLlamaEngine {
                     if (!MultimodalBridge.initModel(modelPath, mmprojPath)) { done.complete("Error: Vision মডেল লোড ব্যর্থ হয়েছে।"); return@execute }
                     loadedVisionPair = pair
                 }
-                if (!MultimodalBridge.getCapabilities().canAnalyzeImages) { done.complete("এই মডেলটি ইমেজ ভিশন সাপোর্ট করে না।"); return@execute }
                 val sb = StringBuilder()
                 MultimodalBridge.analyzeImageBytesStream(imgBytes, prompt, object : GenStream {
                     override fun onDelta(text: String) { sb.append(text); onDelta(text) }

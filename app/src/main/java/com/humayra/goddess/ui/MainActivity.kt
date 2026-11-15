@@ -101,7 +101,7 @@ class MainActivity : AppCompatActivity() {
             scrollConvo.fullScroll(ScrollView.FOCUS_DOWN); tvStatus.text = "Here with you • $engine"
             speak(parsed.spokenText)
             if (parsed.actions.isNotEmpty()) ActionExecutor.executeAll(this@MainActivity, parsed.actions, object : ActionCallbacks {
-                override fun onPose(pose: String) = stage.setPose(pose)
+                override fun onPose(pose: String) { stage.setPose(pose) }
                 override fun onWatchScreen(prompt: String) {
                     ScreenCaptureService.captureBestFrame(this@MainActivity, prompt) { b -> sendMsg(prompt, b) }
                 }
