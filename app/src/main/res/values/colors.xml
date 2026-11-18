@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_main">#0B0E14</color>
-    <color name="bg_card">#131822</color>
-    <color name="bg_pill">#1C2333</color>
-    <color name="stroke_subtle">#293349</color>
-    <color name="accent_primary">#7C9CFF</color>
+    <color name="bg_main">#000000</color>
+    <color name="bg_card">#0B0F17</color>
+    <color name="bg_pill">#121826</color>
+    <color name="stroke_subtle">#1E293B</color>
+    <color name="accent_primary">#60A5FA</color>
     <color name="accent_glow">#A78BFA</color>
     <color name="status_green">#34D399</color>
     <color name="status_amber">#F59E0B</color>
     <color name="status_red">#EF4444</color>
-    <color name="text_primary">#F1F5F9</color>
+    <color name="text_primary">#F8FAFC</color>
     <color name="text_secondary">#94A3B8</color>
 </resources>

@@ -103,13 +103,15 @@ class FloatingOverlayService : Service() {
                     confirmTv?.text = label; pendingConfirm = executeConfirmed; confirmRow?.visibility = View.VISIBLE
                 }
                 override fun onWhatsAppDraftUpdate(replyId: String, message: String) {}
+                override fun onPreviewHtml(title: String, html: String) {}
+                override fun onDownloadAsset(kind: String) {}
             })
         }
     }
 
     private fun speak(t: String) {
         val c = AppConfig(this); if (!c.readAloud) return
-        tts?.setPitch(c.ttsPitch); tts?.setSpeechRate(c.ttsSpeed)
+        com.humayra.goddess.ai.VoiceHelper.applyFemaleVoice(tts, t, c.ttsPitch, c.ttsSpeed)
         tts?.speak(t, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "ov")
     }
 

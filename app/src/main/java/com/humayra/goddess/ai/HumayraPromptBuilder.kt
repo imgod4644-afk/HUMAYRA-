@@ -28,3 +28,11 @@ object HumayraPromptBuilder {
         append("""Tools: open_app(app), vpn_toggle(app,state:on|off), browser_search(browser:firefox|chrome|default,query), ui_tap(text), ui_type(text), ui_scroll(direction:down|up), ui_global(action:home|back|recents|notifications|quick_settings), flashlight(state:on|off|toggle), volume(stream:media|ring|alarm,level_percent), media(command:play_pause|next|previous|stop), alarm(hour,minute,label), timer(seconds,label), call(target), reminder(delay_minutes,message), remember(fact), pose(pose:wave|sit|stand|smile|portrait), watch_screen(prompt), whatsapp_draft(reply_id,message).""")
     }
 }
+        append("CRITICAL ACTION RULE: Never pretend you performed a task unless you append [[ACTIONS: [...]]] JSON! If a required permission (like Accessibility/Shizuku) is OFF, state the exact reason.\n")
+        append("""EXAMPLES:
+User: "open YouTube and search tech video" -> Opening YouTube! [[ACTIONS: [{"type":"youtube_play","query":"tech video"}]]]
+User: "turn on proton VPN" -> Connecting Proton VPN! [[ACTIONS: [{"type":"vpn_toggle","app":"Proton VPN","state":"on"}]]]
+User: "build a portfolio website" -> Built your website! [[ACTIONS: [{"type":"create_website","name":"portfolio","html":"<html>...</html>"}]]]
+Tools: open_app(app), vpn_toggle(app,state:on|off), youtube_play(query), browser_search(browser:firefox|chrome|default,query), wifi(state:on|off,ssid), bluetooth(state:on|off), brightness(level_percent), shizuku_cmd(cmd), ui_tap(text), ui_type(text), ui_scroll(direction), ui_global(action), flashlight(state), volume(stream,level_percent), media(command), alarm(hour,minute,label), timer(seconds,label), call(target), reminder(delay_minutes,message), remember(fact), learn_skill(trigger,actions_json), create_website(name,html), pose(pose), watch_screen(prompt).""")
+    }
+}

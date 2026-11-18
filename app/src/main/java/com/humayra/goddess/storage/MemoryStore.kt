@@ -1,88 +1,48 @@
 package com.humayra.goddess.storage
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
+import com.humayra.goddess.security.CryptoVault
+import org.json.*
 import java.io.File
 
 data class ChatEntry(val role: String, val text: String, val ts: Long)
 data class ReminderEntry(val id: Long, val triggerAtMs: Long, val message: String, val done: Boolean = false)
+data class SkillEntry(val trigger: String, val actionsJson: String)
 
-class MemoryStore(context: Context) {
-    private val memFile = File(context.filesDir, "humayra_memory.json")
-    private val histFile = File(context.filesDir, "humayra_history.json")
-    private val remFile = File(context.filesDir, "humayra_reminders.json")
-
-    @Synchronized
-    fun getMemories(): List<String> {
-        if (!memFile.exists()) return emptyList()
-        val arr = JSONArray(memFile.readText())
-        return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
+class MemoryStore(private val ctx: Context) {
+    private val memFile = File(ctx.filesDir, "humayra_memory.json")
+    private val histFile = File(ctx.filesDir, "humayra_history.json")
+    private val remFile = File(ctx.filesDir, "humayra_reminders.json")
+    private val skillFile = File(ctx.filesDir, "humayra_skills.json")
+    private fun readArr(f: File): JSONArray {
+        if (!f.exists()) return JSONArray()
+        return runCatching { JSONArray(CryptoVault.decrypt(f.readText())) }.getOrDefault(JSONArray())
     }
-
-    @Synchronized
-    fun addMemory(fact: String) {
-        val clean = fact.trim(); if (clean.isEmpty()) return
-        val list = (getMemories().filterNot { it.equals(clean, true) } + clean).takeLast(80)
-        memFile.writeText(JSONArray().apply { list.forEach { put(it) } }.toString())
+    private fun writeArr(f: File, arr: JSONArray) = f.writeText(CryptoVault.encrypt(arr.toString()))
+    @Synchronized fun getMemories() = readArr(memFile).let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } } }
+    @Synchronized fun addMemory(fact: String) {
+        val c = fact.trim(); if (c.isEmpty() || AppConfig(ctx).incognitoChat) return
+        val list = (getMemories().filterNot { it.equals(c, true) } + c).takeLast(120)
+        writeArr(memFile, JSONArray().apply { list.forEach { put(it) } })
     }
-
-    @Synchronized
-    fun replaceAllMemories(lines: List<String>) {
-        val arr = JSONArray().apply { lines.map { it.trim() }.filter { it.isNotEmpty() }.forEach { put(it) } }
-        memFile.writeText(arr.toString())
+    @Synchronized fun replaceAllMemories(lines: List<String>) = writeArr(memFile, JSONArray().apply { lines.map { it.trim() }.filter { it.isNotEmpty() }.forEach { put(it) } })
+    @Synchronized fun getHistory() = readArr(histFile).let { a -> (0 until a.length()).map { i -> a.getJSONObject(i).let { ChatEntry(it.optString("role", "user"), it.optString("text"), it.optLong("ts")) } } }
+    @Synchronized fun appendHistory(role: String, text: String) {
+        if (AppConfig(ctx).incognitoChat) return
+        val list = (getHistory() + ChatEntry(role, text, System.currentTimeMillis())).takeLast(150)
+        writeArr(histFile, JSONArray().apply { list.forEach { put(JSONObject().put("role", it.role).put("text", it.text).put("ts", it.ts)) } })
     }
-    @Synchronized
-    fun getHistory(): List<ChatEntry> {
-        if (!histFile.exists()) return emptyList()
-        val arr = JSONArray(histFile.readText())
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            ChatEntry(o.optString("role", "user"), o.optString("text"), o.optLong("ts"))
-        }
+    @Synchronized fun clearHistory() = writeArr(histFile, JSONArray())
+    @Synchronized fun getReminders() = readArr(remFile).let { a -> (0 until a.length()).map { i -> a.getJSONObject(i).let { ReminderEntry(it.optLong("id"), it.optLong("triggerAtMs"), it.optString("message"), it.optBoolean("done")) } } }
+    @Synchronized fun saveReminders(items: List<ReminderEntry>) = writeArr(remFile, JSONArray().apply { items.takeLast(50).forEach { put(JSONObject().put("id", it.id).put("triggerAtMs", it.triggerAtMs).put("message", it.message).put("done", it.done)) } })
+    fun addReminder(delayMin: Int, msg: String) = ReminderEntry(System.currentTimeMillis(), System.currentTimeMillis() + delayMin * 60_000L, msg, false).also { saveReminders(getReminders() + it) }
+    @Synchronized fun getSkills() = readArr(skillFile).let { a -> (0 until a.length()).map { i -> a.getJSONObject(i).let { SkillEntry(it.optString("trigger"), it.optString("actions")) } } }
+    @Synchronized fun saveSkill(tr: String, act: String) { val l = getSkills().filterNot { it.trigger.equals(tr, true) } + SkillEntry(tr.trim(), act); writeArr(skillFile, JSONArray().apply { l.takeLast(60).forEach { put(JSONObject().put("trigger", it.trigger).put("actions", it.actionsJson)) } }) }
+    fun exportBundle(): String = JSONObject().put("mem", readArr(memFile)).put("skills", readArr(skillFile)).toString()
+    fun importBundle(json: String) { val o = JSONObject(json); o.optJSONArray("mem")?.let { writeArr(memFile, it) }; o.optJSONArray("skills")?.let { writeArr(skillFile, it) } }
+    fun panicWipeAll(wipeKeys: Boolean = false) {
+        listOf(memFile, histFile, remFile, skillFile).forEach { if (it.exists()) it.delete() }
+        NotificationVault(ctx).clear(); File(ctx.filesDir, "intruders").deleteRecursively(); if (wipeKeys) AppConfig(ctx).clearSecrets()
     }
-
-    @Synchronized
-    fun appendHistory(role: String, text: String) {
-        val list = (getHistory() + ChatEntry(role, text, System.currentTimeMillis())).takeLast(120)
-        val arr = JSONArray()
-        list.forEach { e -> arr.put(JSONObject().put("role", e.role).put("text", e.text).put("ts", e.ts)) }
-        histFile.writeText(arr.toString())
-    }
-
-    @Synchronized
-    fun clearHistory() = histFile.writeText("[]")
-    @Synchronized
-    fun getReminders(): List<ReminderEntry> {
-        if (!remFile.exists()) return emptyList()
-        val arr = JSONArray(remFile.readText())
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            ReminderEntry(o.optLong("id"), o.optLong("triggerAtMs"), o.optString("message"), o.optBoolean("done"))
-        }
-    }
-
-    @Synchronized
-    fun saveReminders(items: List<ReminderEntry>) {
-        val arr = JSONArray()
-        items.takeLast(50).forEach { r ->
-            arr.put(JSONObject().put("id", r.id).put("triggerAtMs", r.triggerAtMs).put("message", r.message).put("done", r.done))
-        }
-        remFile.writeText(arr.toString())
-    }
-
-    fun addReminder(delayMinutes: Int, message: String): ReminderEntry {
-        val item = ReminderEntry(System.currentTimeMillis(), System.currentTimeMillis() + delayMinutes * 60_000L, message, false)
-        saveReminders(getReminders() + item)
-        return item
-    }
-
-    companion object {
-        val recentEvents = kotlin.collections.ArrayDeque<String>(16)
-        @Synchronized
-        fun pushEvent(event: String) {
-            if (recentEvents.size >= 12) recentEvents.removeFirst()
-            recentEvents.addLast(event)
-        }
-    }
+    companion object { val recentEvents = kotlin.collections.ArrayDeque<String>(16); @Synchronized fun pushEvent(e: String) { if (recentEvents.size >= 15) recentEvents.removeFirst(); recentEvents.addLast(e) } }
 }

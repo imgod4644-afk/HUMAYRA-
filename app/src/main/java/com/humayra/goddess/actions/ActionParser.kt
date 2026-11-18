@@ -13,9 +13,11 @@ object ActionParser {
         val list = mutableListOf<JSONObject>()
         try {
             val arr = JSONArray(m.groupValues[1])
-            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { list.add(it) }
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { o ->
+                if (!o.has("type")) { val t = o.optString("action").ifBlank { o.optString("tool") }; if (t.isNotBlank()) o.put("type", t) }
+                list.add(o)
+            }
         } catch (_: Exception) {}
-        val clean = raw.replace(m.value, "").trim()
-        return ParsedAiReply(clean.ifBlank { "হয়ে গেছে, বস!" }, list)
+        return ParsedAiReply(raw.replace(m.value, "").trim(), list)
     }
 }
