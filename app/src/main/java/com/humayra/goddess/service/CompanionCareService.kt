@@ -53,7 +53,7 @@ class CompanionCareService : Service() {
             val cfg = AppConfig(ctx); if (!cfg.masterEnabled) return
             val mem = MemoryStore(ctx); val now = System.currentTimeMillis(); var ch = false
             val up = mem.getReminders().map { r -> if (!r.done && r.triggerAtMs <= now) { ch = true; fireAlert(ctx, "⏰ Reminder", r.message, (r.id % 9000).toInt() + 100); r.copy(done = true) } else r }
-            if (ch) mem.saveReminders(up); if (!cfg.proactiveCare || now - cfg.lastCareAlertMs < 55 * 60_000L) return
+            if (ch) mem.saveReminders(up); if (!cfg.proactiveCare || now - cfg.lastCareAlertMs < 30 * 60_000L) return
             val t = PhoneDoctorTelemetry.collect(ctx); val hr = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             val scrOn = (ctx.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
             pickVariedMsg(ctx, cfg, t, hr, scrOn)?.let { cfg.lastCareAlertMs = now; fireAlert(ctx, "🌙 ${cfg.companionName}", it, 3001) }
@@ -75,7 +75,7 @@ class CompanionCareService : Service() {
             val cfg = AppConfig(ctx); val vis = if (cfg.lockScreenPrivacy) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC
             val n = NotificationCompat.Builder(ctx, HumayraApp.CH_ALERTS).setSmallIcon(R.drawable.ic_humayra_emblem).setContentTitle(title).setContentText(body).setVisibility(vis).setAutoCancel(true).build()
             try { (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(id, n) } catch (_: SecurityException) {}
-            if (cfg.telegramHumanEnabled && cfg.telegramToken.isNotBlank() && cfg.telegramChatId.isNotBlank()) CoroutineScope(Dispatchers.IO).launch { TelegramBridge.sendMessage(cfg.telegramToken, cfg.telegramChatId, "$title: $body") }
+            if (cfg.telegramHumanEnabled && cfg.telegramToken.isNotBlank() && cfg.telegramChatId.isNotBlank()) CoroutineScope(Dispatchers.IO).launch { TelegramBridge.sendMessage(cfg.telegramToken, cfg.telegramChatId, body) }
         }
     }
 }
