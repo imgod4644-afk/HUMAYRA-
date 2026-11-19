@@ -6,7 +6,8 @@ import android.os.*
 import android.view.Display
 import android.view.accessibility.*
 import androidx.core.content.ContextCompat
-import com.humayra.goddess.storage.AppConfig
+import com.humayra.goddess.security.CyberShield
+import com.humayra.goddess.storage.*
 import kotlinx.coroutines.delay
 import java.io.ByteArrayOutputStream
 
@@ -16,14 +17,16 @@ class HumayraAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!AppConfig(this).masterEnabled) return
+        val cfg = AppConfig(this); if (!cfg.masterEnabled) return
         val pkg = event?.packageName?.toString() ?: return
-        val cfg = AppConfig(this); if (com.humayra.goddess.security.CyberShield.isSensitiveScreen(pkg, activeScreenText, cfg.blacklistSet()) || com.humayra.goddess.storage.AppPresetStore(this).find(pkg)?.blindPrivacy == true) { activePackage = "PRIVATE_SHIELD"; activeScreenText = ""; return }; val cfg = AppConfig(this); if (com.humayra.goddess.security.CyberShield.isSensitiveScreen(pkg, activeScreenText, cfg.blacklistSet()) || com.humayra.goddess.storage.AppPresetStore(this).find(pkg)?.blindPrivacy == true) { activePackage = "PRIVATE_SHIELD"; activeScreenText = ""; return }; activePackage = pkg
+        if (CyberShield.isSensitiveScreen(pkg, activeScreenText, cfg.blacklistSet()) || AppPresetStore(this).find(pkg)?.blindPrivacy == true) {
+            activePackage = "PRIVATE_SHIELD"; activeScreenText = ""; return
+        }
+        activePackage = pkg
         val now = System.currentTimeMillis(); if (now - lastReadMs < 300) return; lastReadMs = now
         val sb = StringBuilder(); collectText(rootInActiveWindow, sb, 0)
         if (sb.isNotEmpty()) activeScreenText = sb.toString().take(900)
     }
-
     private fun collectText(node: AccessibilityNodeInfo?, sb: StringBuilder, depth: Int) {
         if (node == null || depth > 16 || sb.length > 850 || node.isPassword) return
         val t = node.text?.toString()?.trim().orEmpty(); val d = node.contentDescription?.toString()?.trim().orEmpty()
@@ -31,84 +34,58 @@ class HumayraAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) collectText(node.getChild(i), sb, depth + 1)
     }
     fun tapByText(target: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val q = target.trim(); if (q.isEmpty()) return false
+        val root = rootInActiveWindow ?: return false; val q = target.trim(); if (q.isEmpty()) return false
         val node = findNode(root, q, false) ?: findNode(root, q, true) ?: return false
         var cur: AccessibilityNodeInfo? = node
-        repeat(8) {
-            if (cur?.isClickable == true && cur.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
-            cur = cur?.parent
-        }
-        val r = Rect(); node.getBoundsInScreen(r)
-        if (r.width() <= 0 || r.height() <= 0) return false
+        repeat(8) { if (cur?.isClickable == true && cur.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true; cur = cur?.parent }
+        val r = Rect(); node.getBoundsInScreen(r); if (r.width() <= 0 || r.height() <= 0) return false
         val path = Path().apply { moveTo(r.exactCenterX(), r.exactCenterY()) }
         return dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 70)).build(), null, null)
     }
-
     suspend fun waitAndTapAny(targets: List<String>, maxMs: Long = 7500L): String? {
         val end = System.currentTimeMillis() + maxMs
-        while (System.currentTimeMillis() < end) {
-            for (t in targets) if (tapByText(t)) return t
-            delay(400)
-        }
+        while (System.currentTimeMillis() < end) { for (t in targets) if (tapByText(t)) return t; delay(400) }
         return null
     }
-
     private fun findNode(n: AccessibilityNodeInfo?, q: String, partial: Boolean): AccessibilityNodeInfo? {
-        if (n == null) return null
-        val t = n.text?.toString().orEmpty(); val d = n.contentDescription?.toString().orEmpty()
+        if (n == null) return null; val t = n.text?.toString().orEmpty(); val d = n.contentDescription?.toString().orEmpty()
         if (if (partial) t.contains(q, true) || d.contains(q, true) else t.equals(q, true) || d.equals(q, true)) return n
         for (i in 0 until n.childCount) findNode(n.getChild(i), q, partial)?.let { return it }
         return null
     }
     fun typeText(txt: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val target = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findEditable(root) ?: return false
+        val root = rootInActiveWindow ?: return false; val target = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findEditable(root) ?: return false
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, txt) }
         val ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
         if (ok && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) target.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
         return ok
     }
-
     private fun findEditable(n: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         if (n == null) return null; if (n.isEditable) return n
-        for (i in 0 until n.childCount) findEditable(n.getChild(i))?.let { return it }
-        return null
+        for (i in 0 until n.childCount) findEditable(n.getChild(i))?.let { return it }; return null
     }
-
     fun scroll(dir: String): Boolean {
         val dm = resources.displayMetrics; val x = dm.widthPixels * 0.5f; val down = dir.equals("down", true)
         val path = Path().apply { moveTo(x, dm.heightPixels * (if (down) 0.72f else 0.28f)); lineTo(x, dm.heightPixels * (if (down) 0.28f else 0.72f)) }
         return dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 280)).build(), null, null)
     }
-
-    fun globalAct(name: String) = performGlobalAction(when (name.lowercase()) {
-        "home" -> GLOBAL_ACTION_HOME; "back" -> GLOBAL_ACTION_BACK; "recents" -> GLOBAL_ACTION_RECENTS
-        "notifications" -> GLOBAL_ACTION_NOTIFICATIONS; else -> GLOBAL_ACTION_QUICK_SETTINGS
-    })
+    fun globalAct(name: String) = performGlobalAction(when (name.lowercase()) { "home" -> GLOBAL_ACTION_HOME; "back" -> GLOBAL_ACTION_BACK; "recents" -> GLOBAL_ACTION_RECENTS; "notifications" -> GLOBAL_ACTION_NOTIFICATIONS; else -> GLOBAL_ACTION_QUICK_SETTINGS })
     fun captureScreenJpeg(maxW: Int, cb: (ByteArray?) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) { cb(null); return }
         takeScreenshot(Display.DEFAULT_DISPLAY, ContextCompat.getMainExecutor(this), object : TakeScreenshotCallback {
             override fun onSuccess(res: ScreenshotResult) {
                 try {
-                    val hw = Bitmap.wrapHardwareBuffer(res.hardwareBuffer, res.colorSpace)
-                    val soft = hw?.copy(Bitmap.Config.ARGB_8888, false); hw?.recycle(); res.hardwareBuffer.close()
-                    if (soft == null) { cb(null); return }
-                    val ratio = if (soft.width > maxW) maxW.toFloat() / soft.width else 1f
+                    val hw = Bitmap.wrapHardwareBuffer(res.hardwareBuffer, res.colorSpace); val soft = hw?.copy(Bitmap.Config.ARGB_8888, false); hw?.recycle(); res.hardwareBuffer.close()
+                    if (soft == null) { cb(null); return }; val ratio = if (soft.width > maxW) maxW.toFloat() / soft.width else 1f
                     val sc = if (ratio < 1f) Bitmap.createScaledBitmap(soft, maxW, (soft.height * ratio).toInt(), true).also { soft.recycle() } else soft
-                    val out = ByteArrayOutputStream().also { sc.compress(Bitmap.CompressFormat.JPEG, 72, it) }
-                    sc.recycle(); cb(out.toByteArray())
+                    val out = ByteArrayOutputStream().also { sc.compress(Bitmap.CompressFormat.JPEG, 72, it) }; sc.recycle(); cb(out.toByteArray())
                 } catch (_: Throwable) { cb(null) }
             }
             override fun onFailure(err: Int) = cb(null)
         })
     }
-
     companion object {
-        @Volatile var instance: HumayraAccessibilityService? = null
-        @Volatile var activePackage = ""
-        @Volatile var activeScreenText = ""
-        private var lastReadMs = 0L
+        @Volatile var instance: HumayraAccessibilityService? = null; @Volatile var activePackage = ""; @Volatile var activeScreenText = ""; private var lastReadMs = 0L
         fun getActiveScreenSummary() = if (activePackage.isBlank()) "Idle" else "App: $activePackage | Screen: ${activeScreenText.take(360)}"
     }
 }
