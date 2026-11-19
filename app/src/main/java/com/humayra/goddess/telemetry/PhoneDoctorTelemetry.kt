@@ -24,7 +24,7 @@ data class TelemetrySnapshot(
     }
 }
 object PhoneDoctorTelemetry {
-    fun collect(ctx: Context): TelemetrySnapshot {
+    fun collect(ctx: Context, includeUsage: Boolean = true): TelemetrySnapshot {
         val bInt = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val lvl = bInt?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scl = bInt?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
@@ -54,7 +54,7 @@ object PhoneDoctorTelemetry {
             else -> "Connected"
         }
         val bt = try { (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter?.isEnabled == true } catch (_: Exception) { false }
-        val (scrMin, tops) = readUsage(ctx)
+        val (scrMin, tops) = if (includeUsage) readUsage(ctx) else (0 to emptyList())
         return TelemetrySnapshot(pct, tempC, src, volt, health, (mi.totalMem - mi.availMem) / 1_073_741_824f, mi.totalMem / 1_073_741_824f, sf.availableBytes / 1_073_741_824f, sf.totalBytes / 1_073_741_824f, net, vpn, bt, scrMin, tops)
     }
 

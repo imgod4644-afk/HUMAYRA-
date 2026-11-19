@@ -58,7 +58,7 @@ class AppConfig(context: Context) {
     var savedWifiSsid: String get() = s("saved_wifi_ssid", ""); set(v) = ps("saved_wifi_ssid", v)
     var savedWifiPass: String get() = es("saved_wifi_pass", ""); set(v) = pes("saved_wifi_pass", v)
     var lastCareAlertMs: Long get() = prefs.getLong("last_care_alert_ms", 0L); set(v) = prefs.edit().putLong("last_care_alert_ms", v).apply()
-    var flagSecure: Boolean get() = b("flag_secure", true); set(v) = pb("flag_secure", v)
+    var flagSecure: Boolean get() = b("flag_secure", false); set(v) = pb("flag_secure", v)
     var strictCloudPrivacy: Boolean get() = b("strict_cloud", true); set(v) = pb("strict_cloud", v)
     var piiRedaction: Boolean get() = b("pii_redact", true); set(v) = pb("pii_redact", v)
     var lockScreenPrivacy: Boolean get() = b("lock_notif_priv", true); set(v) = pb("lock_notif_priv", v)

@@ -75,8 +75,8 @@ class MainActivity : AppCompatActivity() {
         imgWall = findViewById(R.id.imgStageWall); scrollConvo = findViewById(R.id.scrollConvo); etInput = findViewById(R.id.etInput)
         initTts(); bindUi(); applyWallpaper(); ensureCareRunning(); handleIntent(intent); checkLockGate()
     }
-    override fun onStop() { super.onStop(); wasBg = true }
-    override fun onStart() { super.onStart(); if (wasBg && cfg.appLockEnabled && cfg.autoLockOnLeave) { wasBg = false; unlocked = false; checkLockGate() } }
+    override fun onStop() { super.onStop(); wasBg = true; runCatching { findViewById<WebView>(R.id.webStage).onPause() } }
+    override fun onStart() { super.onStart(); runCatching { findViewById<WebView>(R.id.webStage).onResume() }; if (wasBg && cfg.appLockEnabled && cfg.autoLockOnLeave) { wasBg = false; unlocked = false; checkLockGate() } }
     private fun applyFlags() { if (cfg.flagSecure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
     private fun applyWallpaper() { val f = File(cfg.stageWallpaperPath); if (f.exists()) { imgWall.setImageBitmap(BitmapFactory.decodeFile(f.absolutePath)); imgWall.visibility = View.VISIBLE; stage.setWallpaper(true) } else { imgWall.visibility = View.GONE; stage.setWallpaper(false) } }
     private fun checkLockGate() {
@@ -156,7 +156,7 @@ class MainActivity : AppCompatActivity() {
             val quick = if (img == null) DirectCommandRouter.matchQuick(this@MainActivity, text) else emptyList()
             val (raw, eng) = HybridBrain.ask(this@MainActivity, text, img) { d -> runOnUiThread { tvConvo.append(d); scrollConvo.fullScroll(ScrollView.FOCUS_DOWN) } }
             val parsed = ActionParser.parse(raw); val acts = parsed.actions.ifEmpty { quick }
-            val spoken = parsed.spokenText.ifBlank { if (acts.isNotEmpty()) "কাজ শুরু করেছি, বস।" else "কোনো উত্তর আসেনি।" }
+            val spoken = parsed.spokenText.ifBlank { if (acts.isNotEmpty()) "একদম ঠিক আছে, করে দিচ্ছি!" else "কোনো উত্তর আসেনি।" }
             mem.appendHistory("assistant", spoken); tvConvo.text = "You: $text\n\n${cfg.companionName}: $spoken"
             scrollConvo.fullScroll(ScrollView.FOCUS_DOWN); tvStatus.text = "Here with you • $eng"; speak(spoken)
             if (acts.isNotEmpty()) { val logs = ActionExecutor.executeAll(this@MainActivity, acts, actionCbs()); tvActionLog.text = logs.joinToString(" | "); tvActionLog.visibility = View.VISIBLE }
@@ -196,7 +196,7 @@ class MainActivity : AppCompatActivity() {
     private fun speak(t: String) {
         if (!cfg.readAloud || !cfg.masterEnabled) return
         tts?.language = when { Regex("[\\u0980-\\u09FF]").containsMatchIn(t) -> Locale("bn", "BD"); Regex("[\\u0900-\\u097F]").containsMatchIn(t) -> Locale("hi", "IN"); else -> Locale.US }
-        VoiceHelper.applyFemaleVoice(tts, t, cfg.ttsPitch, cfg.ttsSpeed); tts?.speak(t, TextToSpeech.QUEUE_FLUSH, Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "u") }, "u")
+        val sp = VoiceHelper.cleanForSpeech(t); if (sp.isBlank()) return; VoiceHelper.applyFemaleVoice(tts, sp, cfg.ttsPitch, cfg.ttsSpeed); tts?.speak(sp, TextToSpeech.QUEUE_FLUSH, Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "u") }, "u")
     }
     private fun startMic(orbMode: Boolean) {
         if (!cfg.masterEnabled) return
@@ -220,7 +220,7 @@ class MainActivity : AppCompatActivity() {
         { pickTextGguf.launch(arrayOf("*/*")) }, { pickVisionGguf.launch(arrayOf("*/*")) }, { pickMmproj.launch(arrayOf("*/*")) },
         { pickAvatar.launch(arrayOf("*/*")) }, { pickWall.launch(arrayOf("image/*")) }, { runDownloader(it) },
         { refreshHeader(); stage.setTheme(cfg.stageBgColor, cfg.stageAccentColor); stage.loadAvatar(cfg.activeAvatarPath); applyWallpaper() },
-        { requestAllPerms() }, { checkGitHubUpdate() }, { GuideTutorialSheet.show(this) }
+        { requestAllPerms() }, { checkGitHubUpdate() }, { GuideTutorialSheet.show(this) }, { applyFlags() }, { CyberShieldSheet.show(this, CyberShieldCallbacks({ pendingPass = it; exportVault.launch("humayra_backup.hvault") }, { pendingPass = it; importVault.launch(arrayOf("*/*")) }, { pickApk.launch(arrayOf("*/*")) }, { applyFlags() }, { requestAllPerms() })) }, { PhoneDoctorSheet.showDoctor(this) { switchTab(1); sendMsg("আমার ফোনের অবস্থা দেখে পরামর্শ দাও।") } }
     ))
     private fun importFile(uri: Uri?, dir: String, onReady: (String) -> Unit) {
         if (uri == null) return; tvStatus.text = "Importing..."
@@ -233,13 +233,13 @@ class MainActivity : AppCompatActivity() {
     private fun refreshHeader() {
         tvName.text = cfg.companionName
         btnMaster.setTextColor(ContextCompat.getColor(this, if (cfg.masterEnabled) R.color.status_green else R.color.status_red))
-        val t = PhoneDoctorTelemetry.collect(this); tvHealth.text = "${t.batteryPct}%•${t.tempC.toInt()}°C"
+        val t = PhoneDoctorTelemetry.collect(this, false); tvHealth.text = "${t.batteryPct}%•${t.tempC.toInt()}°C"
     }
     private fun ensureCareRunning() {
         requestAllPerms(); if (!cfg.masterEnabled) return
         WorkManager.getInstance(this).enqueueUniquePeriodicWork("humayra_care_periodic", ExistingPeriodicWorkPolicy.KEEP, PeriodicWorkRequestBuilder<CareCheckWorker>(15, TimeUnit.MINUTES).build())
         runCatching { ContextCompat.startForegroundService(this, Intent(this, CompanionCareService::class.java)) }
-        lifecycleScope.launch { while (isActive && cfg.masterEnabled) { refreshHeader(); delay(9000) } }
+        lifecycleScope.launch { while (isActive && cfg.masterEnabled) { if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) refreshHeader(); delay(15000) } }
     }
     private fun requestAllPerms() {
         val list = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA, Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE)
@@ -257,6 +257,8 @@ class MainActivity : AppCompatActivity() {
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
     private fun handleIntent(i: Intent?) {
+        if (i?.getBooleanExtra("open_doctor", false) == true) { PhoneDoctorSheet.showDoctor(this) { switchTab(1); sendMsg("ফোনের অবস্থা দেখে পরামর্শ দাও।") }; return }
+        i?.getStringExtra("preset_pkg")?.let { p -> AppPresetsSheet.showForApp(this, p, i.getStringExtra("preset_lbl") ?: p); return }
         if (i?.action == Intent.ACTION_ASSIST && cfg.masterEnabled) { pageVoiceOrb.visibility = View.VISIBLE; startMic(true); return }
         val id = i?.getStringExtra("edit_id") ?: return; val et = EditText(this).apply { setText(i.getStringExtra("edit_draft").orEmpty()) }
         AlertDialog.Builder(this).setTitle("✏️ Reply to ${i.getStringExtra("edit_sender")}").setView(et).setPositiveButton("Send") { _, _ -> HumayraNotificationService.sendReplyNow(this, id, et.text.toString()) }.setNegativeButton("Cancel", null).show()
