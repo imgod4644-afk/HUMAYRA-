@@ -97,7 +97,7 @@ object ActionExecutor {
                 "✅ Brightness $pct%"
             } else { ctx.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); "⚠️ Modify Settings অনুমতি দিন।" }
         }
-        "shizuku_cmd" -> if (ShizukuBridge.hasPermission()) ShizukuBridge.runShell(ctx, a.optString("cmd")).getOrElse { it.message ?: "err" }.take(180) else "❌ Shizuku কানেক্ট নেই।"
+        "shizuku_cmd" -> if (ShizukuBridge.hasPermission()) ShizukuBridge.runShell(ctx, a.optString("cmd")).map { it.ifBlank { "✅ Command Executed" } }.getOrElse { "❌ " + (it.message ?: "err") }.take(240) else "❌ Shizuku অফ।"
         "create_website" -> saveAndPreviewSite(ctx, a.optString("name", "site"), a.optString("html"), cb)
         "learn_skill" -> { MemoryStore(ctx).saveSkill(a.optString("trigger"), a.optString("actions_json", "[]")); "✅ Skill Learned: ${a.optString("trigger")}" }
         "auto_download" -> { cb.onDownloadAsset(a.optString("kind", "avatar")); "⏳ Download started" }
@@ -116,6 +116,15 @@ object ActionExecutor {
         "pose" -> { cb.onPose(a.optString("pose", "wave")); "✅ Pose updated" }
         "watch_screen" -> { cb.onWatchScreen(a.optString("prompt", "Analyze screen")); "✅ Watching screen" }
         "whatsapp_draft" -> { cb.onWhatsAppDraftUpdate(a.optString("reply_id"), a.optString("message")); "✅ Draft ready" }
+        "device_control" -> deviceControl(ctx, a.optString("setting"), a.optString("value", "on"))
+        "wait_ms" -> { delay(a.optLong("ms", 700L).coerceIn(100L, 5000L)); "✅ Waited" }
+        "open_intent" -> runCatching {
+            val act = a.optString("action").ifBlank { Intent.ACTION_VIEW }
+            val i = Intent(act).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            a.optString("uri").takeIf { it.isNotBlank() }?.let { i.data = Uri.parse(it) }
+            a.optString("pkg").takeIf { it.isNotBlank() }?.let { i.setPackage(it) }
+            ctx.startActivity(i); "✅ Opened $act"
+        }.getOrElse { "❌ Intent err: ${it.message}" }
         else -> "⚠️ Unknown tool: ${a.optString("type")}"
     }
     private fun saveAndPreviewSite(ctx: Context, name: String, html: String, cb: ActionCallbacks): String {
@@ -147,4 +156,25 @@ object ActionExecutor {
         ctx.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER), "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?", arrayOf("%${q.trim()}%"), null)?.use { c -> if (c.moveToFirst()) return c.getString(0) ?: q }
         return q
     }
+    private suspend fun deviceControl(ctx: Context, s: String, v: String): String {
+        val k = s.trim().lowercase(); val on = !v.equals("off", true) && !v.equals("false", true) && v != "0"
+        val sh = ShizukuBridge.hasPermission()
+        return when (k) {
+            "mobile_data", "data", "cellular" -> if (sh) ShizukuBridge.setData(ctx, on).fold({ "✅ Mobile Data ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else { openSettingsFallback(ctx, Settings.ACTION_DATA_ROAMING_SETTINGS); "⚠️ Shizuku অফ — Data Settings খোলা হলো" }
+            "wifi" -> if (sh) ShizukuBridge.setWifi(ctx, on).fold({ "✅ Wi-Fi ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else "⚠️ Shizuku অফ"
+            "bluetooth", "bt" -> if (sh) ShizukuBridge.setBluetooth(ctx, on).fold({ "✅ Bluetooth ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else "⚠️ Shizuku অফ"
+            "dark_mode", "dark" -> if (sh) ShizukuBridge.setDarkMode(ctx, on).fold({ "✅ Dark Mode ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else "⚠️ Shizuku অফ"
+            "dnd" -> if (sh) ShizukuBridge.setDnd(ctx, on).fold({ "✅ DND ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else "⚠️ Shizuku অফ"
+            "auto_rotate", "rotate" -> if (sh) ShizukuBridge.setAutoRotate(ctx, on).fold({ "✅ Auto-Rotate ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else "⚠️ Shizuku অফ"
+            "battery_saver" -> if (sh) ShizukuBridge.setBatterySaver(ctx, on).fold({ "✅ Battery Saver ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else "⚠️ Shizuku অফ"
+            "airplane" -> if (sh) ShizukuBridge.setAirplane(ctx, on).fold({ "✅ Airplane ${if (on) "ON" else "OFF"}" }, { "❌ ${it.message}" }) else "⚠️ Shizuku অফ"
+            "hotspot" -> { openSettingsFallback(ctx, "android.settings.TETHER_SETTINGS"); "✅ Hotspot সেটিংস খোলা হয়েছে" }
+            "brightness" -> if (sh) { ShizukuBridge.setBrightness(ctx, v.toIntOrNull() ?: 60); "✅ Brightness $v%" } else "⚠️ Shizuku অফ"
+            "volume" -> setVol(ctx, "media", v.toIntOrNull() ?: 60)
+            "timeout" -> if (sh) { ShizukuBridge.setScreenTimeoutSec(ctx, v.toIntOrNull() ?: 60); "✅ Timeout ${v}s" } else "⚠️ Shizuku অফ"
+            "force_stop" -> if (sh) { val p = findPackage(ctx, v) ?: v; ShizukuBridge.forceStop(ctx, p); "✅ Stopped $p" } else "⚠️ Shizuku অফ"
+            else -> if (sh) ShizukuBridge.runShell(ctx, "$s $v").getOrElse { it.message ?: "err" } else "⚠️ Shizuku অফ"
+        }
+    }
+    private fun openSettingsFallback(ctx: Context, act: String) = runCatching { ctx.startActivity(Intent(act).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }

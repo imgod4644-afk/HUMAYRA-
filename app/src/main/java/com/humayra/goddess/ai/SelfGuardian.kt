@@ -24,7 +24,7 @@ object SelfGuardian {
     }
 
     fun autoHeal(ctx: Context) {
-        val cfg = AppConfig(ctx); val t = PhoneDoctorTelemetry.collect(ctx)
+        val cfg = AppConfig(ctx); val t = PhoneDoctorTelemetry.collect(ctx, false)
         val freeRam = t.ramTotalGb - t.ramUsedGb
         if ((freeRam < 1.0f || t.tempC > 39.5f) && !cfg.ecoMode) {
             cfg.ecoMode = true; LocalLlamaEngine.releaseAll()

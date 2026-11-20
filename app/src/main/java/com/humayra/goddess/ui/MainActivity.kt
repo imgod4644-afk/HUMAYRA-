@@ -42,7 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tab3d: TextView; private lateinit var tabChat: TextView; private lateinit var btnActionOrb: TextView
     private lateinit var page3d: View; private lateinit var pageChat: View; private lateinit var pageVoiceOrb: View
     private lateinit var viewOrb: View; private lateinit var tvOrbState: TextView; private lateinit var swHands: SwitchCompat
-    private lateinit var imgWall: ImageView; private lateinit var scrollConvo: ScrollView; private lateinit var etInput: EditText
+    private lateinit var imgWall: ImageView; private lateinit var scrollConvo: ScrollView; private lateinit var etInput: EditText; private lateinit var card3dReply: View; private lateinit var tv3dReply: TextView; private lateinit var tvOrbReply: TextView
     private var tts: TextToSpeech? = null; private var sr: SpeechRecognizer? = null; private var activeJob: Job? = null
     private var unlocked = false; private var wasBg = false; private var pendingPass = ""
     private val pickTextGguf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { u -> importFile(u, "models") { cfg.localTextModelPath = it } }
@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         tab3d = findViewById(R.id.tab3d); tabChat = findViewById(R.id.tabChat); btnActionOrb = findViewById(R.id.btnActionOrb)
         page3d = findViewById(R.id.page3d); pageChat = findViewById(R.id.pageChat); pageVoiceOrb = findViewById(R.id.pageVoiceOrb)
         viewOrb = findViewById(R.id.viewOrb); tvOrbState = findViewById(R.id.tvOrbState); swHands = findViewById(R.id.swHandsFree)
-        imgWall = findViewById(R.id.imgStageWall); scrollConvo = findViewById(R.id.scrollConvo); etInput = findViewById(R.id.etInput)
+        imgWall = findViewById(R.id.imgStageWall); scrollConvo = findViewById(R.id.scrollConvo); etInput = findViewById(R.id.etInput); card3dReply = findViewById(R.id.card3dReply); tv3dReply = findViewById(R.id.tv3dReply); tvOrbReply = findViewById(R.id.tvOrbReply)
         initTts(); bindUi(); applyWallpaper(); ensureCareRunning(); handleIntent(intent); checkLockGate()
     }
     override fun onStop() { super.onStop(); wasBg = true; runCatching { findViewById<WebView>(R.id.webStage).onPause() } }
@@ -123,8 +123,8 @@ class MainActivity : AppCompatActivity() {
             .forEach { (id, p) -> findViewById<TextView>(id).setOnClickListener { stage.setPose(p) } }
         etInput.addTextChangedListener { s -> btnActionOrb.text = if (s.isNullOrBlank()) "✦" else "➤" }
         findViewById<TextView>(R.id.btnMic).setOnClickListener { startMic(false) }
-        findViewById<TextView>(R.id.btnOrbClose).setOnClickListener { pageVoiceOrb.visibility = View.GONE; sr?.cancel(); tts?.stop() }
-        btnActionOrb.setOnClickListener { val t = etInput.text.toString().trim(); if (t.isNotEmpty()) { etInput.setText(""); switchTab(1); sendMsg(t) } else { pageVoiceOrb.visibility = View.VISIBLE; startMic(true) } }
+        findViewById<TextView>(R.id.btnOrbClose).setOnClickListener { pageVoiceOrb.visibility = View.GONE; sr?.cancel(); tts?.stop(); stage.setSpeaking(false) }; viewOrb.setOnClickListener { tts?.stop(); stage.setSpeaking(false); startMic(true) }; findViewById<TextView>(R.id.btn3dReplyClose).setOnClickListener { card3dReply.visibility = View.GONE }
+        btnActionOrb.setOnClickListener { val t = etInput.text.toString().trim(); if (t.isNotEmpty()) { etInput.setText(""); sendMsg(t) } else { pageVoiceOrb.visibility = View.VISIBLE; swHands.isChecked = true; cfg.handsFreeLoop = true; tvOrbReply.text = ""; startMic(true) } }
         findViewById<TextView>(R.id.btnPlus).setOnClickListener { showPlusMenu() }
     }
     private fun showPlusMenu() {
@@ -149,17 +149,36 @@ class MainActivity : AppCompatActivity() {
         tabChat.setTextColor(ContextCompat.getColor(this, if (idx == 1) R.color.bg_main else R.color.text_secondary))
     }
     private fun sendMsg(text: String, img: ByteArray? = null) {
-        if (!cfg.masterEnabled) { tvConvo.text = "Master Switch OFF আছে — ওপরে ⏻ চাপুন।"; return }
-        tvStatus.text = "Thinking..."; tvActionLog.visibility = View.GONE; tvConvo.text = "You: $text\n\n${cfg.companionName}: ..."
+        if (!cfg.masterEnabled) { tvConvo.text = "Master Switch OFF আছে — ওপরে ON চাপুন।"; return }
+        tvStatus.text = "Thinking..."; tvActionLog.visibility = View.GONE; tvConvo.text = "You: $text\n\n${cfg.companionName}: "
+        if (cfg.uiTab == 0) { card3dReply.visibility = View.VISIBLE; tv3dReply.text = "..." }
         mem.appendHistory("user", text); activeJob?.cancel()
         activeJob = lifecycleScope.launch {
             val quick = if (img == null) DirectCommandRouter.matchQuick(this@MainActivity, text) else emptyList()
-            val (raw, eng) = HybridBrain.ask(this@MainActivity, text, img) { d -> runOnUiThread { tvConvo.append(d); scrollConvo.fullScroll(ScrollView.FOCUS_DOWN) } }
-            val parsed = ActionParser.parse(raw); val acts = parsed.actions.ifEmpty { quick }
-            val spoken = parsed.spokenText.ifBlank { if (acts.isNotEmpty()) "একদম ঠিক আছে, করে দিচ্ছি!" else "কোনো উত্তর আসেনি।" }
-            mem.appendHistory("assistant", spoken); tvConvo.text = "You: $text\n\n${cfg.companionName}: $spoken"
-            scrollConvo.fullScroll(ScrollView.FOCUS_DOWN); tvStatus.text = "Here with you • $eng"; speak(spoken)
-            if (acts.isNotEmpty()) { val logs = ActionExecutor.executeAll(this@MainActivity, acts, actionCbs()); tvActionLog.text = logs.joinToString(" | "); tvActionLog.visibility = View.VISIBLE }
+            if (quick.isNotEmpty()) {
+                val logs = ActionExecutor.executeAll(this@MainActivity, quick, actionCbs())
+                val sp = if (Regex("[\\u0980-\\u09FF]").containsMatchIn(text)) "একদম ঠিক আছে, করে দিচ্ছি!" else "Done! Switched it for you."
+                mem.appendHistory("assistant", sp); tvConvo.text = "You: $text\n\n${cfg.companionName}: $sp"
+                if (cfg.uiTab == 0) tv3dReply.text = "$sp\n${logs.joinToString(" | ")}"
+                tvActionLog.text = logs.joinToString(" | "); tvActionLog.visibility = View.VISIBLE
+                tvStatus.text = "Instant • Shizuku"; speak(sp); return@launch
+            }
+            var curPrompt = text
+            for (step in 0..2) {
+                var streamBuf = ""; if (step > 0) tvConvo.append("\n\n")
+                val (raw, eng) = HybridBrain.ask(this@MainActivity, curPrompt, if (step == 0) img else null) { d ->
+                    runOnUiThread { streamBuf += d; tvConvo.append(d); scrollConvo.fullScroll(ScrollView.FOCUS_DOWN); if (cfg.uiTab == 0) tv3dReply.text = streamBuf }
+                }
+                val parsed = ActionParser.parse(raw)
+                val spoken = parsed.spokenText.ifBlank { if (parsed.actions.isNotEmpty()) "হয়ে গেছে!" else "আবার বলো?" }
+                mem.appendHistory("assistant", spoken); tvConvo.text = "You: $text\n\n${cfg.companionName}: $spoken"
+                if (cfg.uiTab == 0) tv3dReply.text = spoken
+                scrollConvo.fullScroll(ScrollView.FOCUS_DOWN); tvStatus.text = "Here with you • $eng"; speak(spoken)
+                val logs = if (parsed.actions.isNotEmpty()) ActionExecutor.executeAll(this@MainActivity, parsed.actions, actionCbs()) else emptyList()
+                if (logs.isNotEmpty()) { tvActionLog.text = logs.joinToString(" | "); tvActionLog.visibility = View.VISIBLE; if (cfg.uiTab == 0) tv3dReply.append("\n${logs.joinToString(" | ")}") }
+                if (!parsed.needsContinue || logs.isEmpty() || step == 2) break
+                delay(750); curPrompt = "Step done (${logs.joinToString("; ")}). Observe screen and continue next step."
+            }
         }
     }
     private fun actionCbs() = object : ActionCallbacks {
@@ -185,7 +204,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private fun initTts() {
-        tts = TextToSpeech(this) { if (it == TextToSpeech.SUCCESS) tts?.language = Locale("bn", "BD") }.apply {
+        tts = TextToSpeech(this) { if (it == TextToSpeech.SUCCESS) tts?.language = Locale("bn", "IN") }.apply {
             setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) { runOnUiThread { stage.setSpeaking(true); tvOrbState.text = "Speaking..." } }
                 override fun onDone(id: String?) { runOnUiThread { stage.setSpeaking(false); if (pageVoiceOrb.visibility == View.VISIBLE && cfg.handsFreeLoop && cfg.masterEnabled) startMic(true) } }
@@ -195,8 +214,8 @@ class MainActivity : AppCompatActivity() {
     }
     private fun speak(t: String) {
         if (!cfg.readAloud || !cfg.masterEnabled) return
-        tts?.language = when { Regex("[\\u0980-\\u09FF]").containsMatchIn(t) -> Locale("bn", "BD"); Regex("[\\u0900-\\u097F]").containsMatchIn(t) -> Locale("hi", "IN"); else -> Locale.US }
-        val sp = VoiceHelper.cleanForSpeech(t); if (sp.isBlank()) return; VoiceHelper.applyFemaleVoice(tts, sp, cfg.ttsPitch, cfg.ttsSpeed); tts?.speak(sp, TextToSpeech.QUEUE_FLUSH, Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "u") }, "u")
+        tts?.language = when { Regex("[\\u0980-\\u09FF]").containsMatchIn(t) -> Locale("bn", "IN"); Regex("[\\u0900-\\u097F]").containsMatchIn(t) -> Locale("hi", "IN"); else -> Locale.US }
+        val sp = VoiceHelper.cleanForSpeech(t); if (sp.isBlank()) return; if (pageVoiceOrb.visibility == View.VISIBLE) tvOrbReply.text = sp; VoiceHelper.applyFemaleVoice(tts, sp, cfg.ttsPitch, cfg.ttsSpeed, cfg.preferredVoiceName); tts?.speak(sp, TextToSpeech.QUEUE_FLUSH, Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "u") }, "u")
     }
     private fun startMic(orbMode: Boolean) {
         if (!cfg.masterEnabled) return
@@ -208,9 +227,9 @@ class MainActivity : AppCompatActivity() {
                 override fun onPartialResults(b: Bundle?) { val p = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull(); if (!p.isNullOrBlank()) tvOrbState.text = p }
                 override fun onResults(b: Bundle?) {
                     val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                    if (t.isNotBlank()) { if (!orbMode) switchTab(1); sendMsg(t) } else if (orbMode && cfg.handsFreeLoop) startMic(true)
+                    if (t.isNotBlank()) { if (!orbMode) sendMsg(t) } else if (orbMode && cfg.handsFreeLoop) startMic(true)
                 }
-                override fun onError(e: Int) { tvStatus.text = "Mic ready ($e)"; tvOrbState.text = "Tap 🎤 or speak ($e)" }
+                override fun onError(e: Int) { tvStatus.text = "Mic ready ($e)"; if (orbMode && cfg.handsFreeLoop && cfg.masterEnabled && (e == 6 || e == 7)) { tvOrbState.text = "Listening..."; lifecycleScope.launch { delay(550); if (pageVoiceOrb.visibility == View.VISIBLE) startMic(true) } } else tvOrbState.text = "Tap Orb to speak" }
                 override fun onBeginningOfSpeech() {} override fun onBufferReceived(p0: ByteArray?) {} override fun onEndOfSpeech() {} override fun onEvent(p0: Int, p1: Bundle?) {}
             })
             startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5).putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true))
@@ -231,7 +250,7 @@ class MainActivity : AppCompatActivity() {
         val i = Intent(this, FloatingOverlayService::class.java); if (FloatingOverlayService.isRunning) stopService(i) else ContextCompat.startForegroundService(this, i)
     }
     private fun refreshHeader() {
-        tvName.text = cfg.companionName
+        tvName.text = cfg.companionName; btnMaster.text = if (cfg.masterEnabled) "ON" else "OFF"
         btnMaster.setTextColor(ContextCompat.getColor(this, if (cfg.masterEnabled) R.color.status_green else R.color.status_red))
         val t = PhoneDoctorTelemetry.collect(this, false); tvHealth.text = "${t.batteryPct}%•${t.tempC.toInt()}°C"
     }
@@ -259,7 +278,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(i: Intent?) {
         if (i?.getBooleanExtra("open_doctor", false) == true) { PhoneDoctorSheet.showDoctor(this) { switchTab(1); sendMsg("ফোনের অবস্থা দেখে পরামর্শ দাও।") }; return }
         i?.getStringExtra("preset_pkg")?.let { p -> AppPresetsSheet.showForApp(this, p, i.getStringExtra("preset_lbl") ?: p); return }
-        if (i?.action == Intent.ACTION_ASSIST && cfg.masterEnabled) { pageVoiceOrb.visibility = View.VISIBLE; startMic(true); return }
+        if (i?.action == Intent.ACTION_ASSIST && cfg.masterEnabled) { pageVoiceOrb.visibility = View.VISIBLE; swHands.isChecked = true; cfg.handsFreeLoop = true; tvOrbReply.text = ""; startMic(true); return }
         val id = i?.getStringExtra("edit_id") ?: return; val et = EditText(this).apply { setText(i.getStringExtra("edit_draft").orEmpty()) }
         AlertDialog.Builder(this).setTitle("✏️ Reply to ${i.getStringExtra("edit_sender")}").setView(et).setPositiveButton("Send") { _, _ -> HumayraNotificationService.sendReplyNow(this, id, et.text.toString()) }.setNegativeButton("Cancel", null).show()
     }

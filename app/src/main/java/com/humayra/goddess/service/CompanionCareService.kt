@@ -31,7 +31,7 @@ class CompanionCareService : Service() {
             val cfg = AppConfig(this); if (!cfg.masterEnabled) { stopSelf(); break }
             val scrOn = pm.isInteractive; val now = System.currentTimeMillis()
             if (scrOn && !lastScrOn) lastLiveMs = 0L; lastScrOn = scrOn
-            if (cfg.telegramHumanEnabled) TelegramBridge.pollOnce(this)
+            if (id == 3009 && cfg.telegramHumanEnabled) TelegramBridge.pollOnce(this)
             val t = if ((scrOn && now - lastLiveMs >= 16_000L) || now - lastCarePassMs >= 120_000L) PhoneDoctorTelemetry.collect(this, false) else null
             if (t != null && scrOn && now - lastLiveMs >= 16_000L) { lastLiveMs = now; pushLiveNotif(cfg, t) }
             if (t != null && now - lastCarePassMs >= 120_000L) {
@@ -84,7 +84,7 @@ class CompanionCareService : Service() {
             if (ch) mem.saveReminders(up); if (!cfg.proactiveCare || now - cfg.lastCareAlertMs < 30 * 60_000L) return
             val t = PhoneDoctorTelemetry.collect(ctx, false); val hr = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             val scrOn = (ctx.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
-            pickVariedMsg(ctx, cfg, t, hr, scrOn)?.let { cfg.lastCareAlertMs = now; fireAlert(ctx, "🌙 ${cfg.companionName}", it, 3001) }
+            cfg.lastCareAlertMs = now; pickVariedMsg(ctx, cfg, t, hr, scrOn)?.let { fireAlert(ctx, "🌙 ${cfg.companionName}", it, 3001) }
         }
         private fun pickVariedMsg(ctx: Context, cfg: AppConfig, t: TelemetrySnapshot, hr: Int, scrOn: Boolean): String? {
             if (t.tempC > 39.0f) return "ফোন ${t.tempC}°C গরম হয়েছে, একটু রাখো!"
@@ -106,7 +106,7 @@ class CompanionCareService : Service() {
             val n = NotificationCompat.Builder(ctx, HumayraApp.CH_ALERTS).setSmallIcon(R.drawable.ic_humayra_emblem)
                 .setContentTitle(title).setContentText(body).setVisibility(vis).setContentIntent(pi).setAutoCancel(true).build()
             try { (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(id, n) } catch (_: SecurityException) {}
-            if (cfg.telegramHumanEnabled && cfg.telegramToken.isNotBlank() && cfg.telegramChatId.isNotBlank()) CoroutineScope(Dispatchers.IO).launch { TelegramBridge.sendMessage(cfg.telegramToken, cfg.telegramChatId, body) }
+            if (id == 3009 && cfg.telegramHumanEnabled && cfg.telegramToken.isNotBlank() && cfg.telegramChatId.isNotBlank()) CoroutineScope(Dispatchers.IO).launch { TelegramBridge.sendMessage(cfg.telegramToken, cfg.telegramChatId, body) }
         }
     }
 }

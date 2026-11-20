@@ -22,7 +22,8 @@ class HumayraAccessibilityService : AccessibilityService() {
     override fun onDestroy() { svcScope.cancel(); instance = null; super.onDestroy() }
     override fun onInterrupt() {}
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) { runCatching { handleAccEvent(event) } }
+    private fun handleAccEvent(event: AccessibilityEvent?) {
         val cfg = AppConfig(this); if (!cfg.masterEnabled) return
         val pkg = event?.packageName?.toString() ?: return
         val pre = getCachedPreset(this, pkg)

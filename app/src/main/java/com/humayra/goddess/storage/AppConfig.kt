@@ -55,6 +55,8 @@ class AppConfig(context: Context) {
     var proactiveCare: Boolean get() = b("proactive_care", true); set(v) = pb("proactive_care", v)
     var whatsappAssistant: Boolean get() = b("wa_assistant", true); set(v) = pb("wa_assistant", v)
     var useShizuku: Boolean get() = b("use_shizuku", true); set(v) = pb("use_shizuku", v)
+    var preferredVoiceName: String get() = s("pref_voice", ""); set(v) = ps("pref_voice", v)
+    var telegramVoiceReplies: Boolean get() = b("tg_voice_reply", true); set(v) = pb("tg_voice_reply", v)
     var savedWifiSsid: String get() = s("saved_wifi_ssid", ""); set(v) = ps("saved_wifi_ssid", v)
     var savedWifiPass: String get() = es("saved_wifi_pass", ""); set(v) = pes("saved_wifi_pass", v)
     var lastCareAlertMs: Long get() = prefs.getLong("last_care_alert_ms", 0L); set(v) = prefs.edit().putLong("last_care_alert_ms", v).apply()

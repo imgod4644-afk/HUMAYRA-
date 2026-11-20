@@ -111,8 +111,8 @@ class FloatingOverlayService : Service() {
 
     private fun speak(t: String) {
         val c = AppConfig(this); if (!c.readAloud) return
-        com.humayra.goddess.ai.VoiceHelper.applyFemaleVoice(tts, t, c.ttsPitch, c.ttsSpeed)
-        tts?.speak(t, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "ov")
+        val sp = com.humayra.goddess.ai.VoiceHelper.cleanForSpeech(t); if (sp.isBlank()) return; com.humayra.goddess.ai.VoiceHelper.applyFemaleVoice(tts, sp, c.ttsPitch, c.ttsSpeed, c.preferredVoiceName)
+        tts?.speak(sp, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "ov")
     }
 
     private fun startMic() = try {
