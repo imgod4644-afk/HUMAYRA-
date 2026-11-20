@@ -131,18 +131,22 @@ object CloudAiClient {
         }
     }
     suspend fun hearAudio(cfg: AppConfig, audio: ByteArray, mime: String): String? = withContext(Dispatchers.IO) {
-        val t = availableTargets(cfg).firstOrNull { it.prov == "GEMINI" || it.prov == "GROQ" } ?: return@withContext null
-        runCatching {
-            if (t.prov == "GEMINI") {
-                val p = JSONArray().put(JSONObject().put("text", "Transcribe this voice message accurately in its original language (Bangla/Hindi/Hinglish/Banglish/English). Output ONLY the transcription.")).put(JSONObject().put("inline_data", JSONObject().put("mime_type", mime).put("data", Base64.encodeToString(audio, Base64.NO_WRAP))))
-                val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", p)))
-                val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent").header("x-goog-api-key", t.key).post(body.toString().toRequestBody("application/json".toMediaType())).build()
-                http.newCall(req).execute().use { r -> JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")?.trim() }
-            } else {
-                val mb = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("model", "whisper-large-v3-turbo").addFormDataPart("file", "voice.ogg", audio.toRequestBody(mime.toMediaType())).build()
-                val req = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions").header("Authorization", "Bearer ${t.key}").post(mb).build()
-                http.newCall(req).execute().use { r -> JSONObject(r.body?.string().orEmpty()).optString("text").trim().ifBlank { null } }
-            }
-        }.getOrNull()
+        val list = availableTargets(cfg).filter { it.prov == "GROQ" || it.prov == "GEMINI" }.distinctBy { it.prov }
+        for (t in list) {
+            val out = runCatching {
+                if (t.prov == "GROQ") {
+                    val mb = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("model", "whisper-large-v3-turbo").addFormDataPart("file", "voice.ogg", audio.toRequestBody(mime.toMediaType())).build()
+                    val req = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions").header("Authorization", "Bearer ${t.key}").post(mb).build()
+                    http.newCall(req).execute().use { r -> if (r.isSuccessful) JSONObject(r.body?.string().orEmpty()).optString("text").trim().ifBlank { null } else null }
+                } else {
+                    val p = JSONArray().put(JSONObject().put("text", "Transcribe this voice message accurately in its original language. Output ONLY the transcription.")).put(JSONObject().put("inline_data", JSONObject().put("mime_type", mime).put("data", Base64.encodeToString(audio, Base64.NO_WRAP))))
+                    val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", p)))
+                    val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent").header("x-goog-api-key", t.key).post(body.toString().toRequestBody("application/json".toMediaType())).build()
+                    http.newCall(req).execute().use { r -> if (r.isSuccessful) JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")?.trim() else null }
+                }
+            }.getOrNull()
+            if (!out.isNullOrBlank()) return@withContext out
+        }
+        null
     }
 }

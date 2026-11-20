@@ -89,7 +89,7 @@ object TelegramBridge {
             (if (mems.isNotBlank()) "Facts: $mems" else "")
     }
     suspend fun pollOnce(ctx: Context) {
-        val cfg = AppConfig(ctx); if (!cfg.masterEnabled || !cfg.telegramHumanEnabled) return
+        val cfg = AppConfig(ctx); if (!cfg.telegramHumanEnabled) return
         val tok = cfg.telegramToken.trim(); if (tok.isBlank()) return
         val raw = runCatching { http.newCall(Request.Builder().url("https://api.telegram.org/bot$tok/getUpdates?offset=${lastUpdateId + 1}&timeout=3").build()).execute().use { if (it.isSuccessful) it.body?.string() else null } }.getOrNull() ?: return
         val res = runCatching { JSONObject(raw).optJSONArray("result") }.getOrNull() ?: return
@@ -107,7 +107,7 @@ object TelegramBridge {
                 if (txt.isBlank()) { sendMessage(tok, cid, "Voice shunte Settings-e Gemini ba Groq key dao na 💜"); continue }
             }
             if (txt.isBlank()) continue
-            if (!isV) sendTyping(tok, cid)
+            kotlinx.coroutines.delay(900L); if (!isV) sendTyping(tok, cid)
             if (txt.contains("আপনি") || txt.contains("apni", true) || txt.contains("name", true) || txt.contains("নাম", true) || txt.contains("girlfriend", true) || txt.contains("dakbe", true) || Regex("\\baap\\b", RegexOption.IGNORE_CASE).containsMatchIn(txt)) MemoryStore(ctx).addMemory(txt)
             val hist = tgHist(ctx); val style = detectStyle(txt, hist); val sys = buildHumanSys(ctx, cfg, style, txt)
             val cHist = if (style == "BENGALI" || style == "HINDI") hist else hist.filter { !hasBn(it.text) && !hasDeva(it.text) }

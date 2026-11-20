@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var page3d: View; private lateinit var pageChat: View; private lateinit var pageVoiceOrb: View
     private lateinit var viewOrb: View; private lateinit var tvOrbState: TextView; private lateinit var swHands: SwitchCompat
     private lateinit var imgWall: ImageView; private lateinit var scrollConvo: ScrollView; private lateinit var etInput: EditText; private lateinit var card3dReply: View; private lateinit var tv3dReply: TextView; private lateinit var tvOrbReply: TextView
-    private var tts: TextToSpeech? = null; private var sr: SpeechRecognizer? = null; private var activeJob: Job? = null
+    private var tts: TextToSpeech? = null; private var ttsReady = false; private var sr: SpeechRecognizer? = null; private var activeJob: Job? = null
     private var unlocked = false; private var wasBg = false; private var pendingPass = ""
     private val pickTextGguf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { u -> importFile(u, "models") { cfg.localTextModelPath = it } }
     private val pickVisionGguf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { u -> importFile(u, "models") { cfg.localVisionModelPath = it } }
@@ -150,7 +150,7 @@ class MainActivity : AppCompatActivity() {
     }
     private fun sendMsg(text: String, img: ByteArray? = null) {
         if (!cfg.masterEnabled) { tvConvo.text = "Master Switch OFF আছে — ওপরে ON চাপুন।"; return }
-        tvStatus.text = "Thinking..."; tvActionLog.visibility = View.GONE; tvConvo.text = "You: $text\n\n${cfg.companionName}: "
+        tvStatus.text = "Thinking..."; if (pageVoiceOrb.visibility == View.VISIBLE) tvOrbState.text = "Thinking..."; tvActionLog.visibility = View.GONE; tvConvo.text = "You: $text\n\n${cfg.companionName}: "
         if (cfg.uiTab == 0) { card3dReply.visibility = View.VISIBLE; tv3dReply.text = "..." }
         mem.appendHistory("user", text); activeJob?.cancel()
         activeJob = lifecycleScope.launch {
@@ -190,49 +190,90 @@ class MainActivity : AppCompatActivity() {
         override fun onDownloadAsset(kind: String) = runDownloader(kind)
     }
     private fun runDownloader(kind: String) {
-        lifecycleScope.launch {
-            when (kind) {
-                "avatar" -> ModelDownloader.download(this@MainActivity, ModelDownloader.VRM_SAMPLE, "avatars", "Humayra_Sample.vrm") { tvStatus.text = it }
-                    .onSuccess { f -> cfg.addAvatar(AvatarProfile("Sample Goddess", "VRM", f.absolutePath)); cfg.activeAvatarPath = f.absolutePath; stage.loadAvatar(f.absolutePath); tvStatus.text = "✅ 3D VRM Ready!" }
-                "text_model" -> ModelDownloader.download(this@MainActivity, ModelDownloader.LLAMA_1B, "models", "Llama-3.2-1B-Q4.gguf") { tvStatus.text = it }
-                    .onSuccess { f -> cfg.localTextModelPath = f.absolutePath; tvStatus.text = "✅ Offline 1B Ready!" }
+        val tv = TextView(this).apply { text = "Starting download..."; textSize = 14f; setPadding(48, 36, 48, 24) }
+        var dlJob: Job? = null
+        val dlg = AlertDialog.Builder(this).setTitle("⬇️ Downloading Asset").setView(tv)
+            .setNegativeButton("Cancel") { _, _ -> dlJob?.cancel() }.setCancelable(false).show()
+        fun prog(s: String) { runOnUiThread { tvStatus.text = s; tv.text = s } }
+        dlJob = lifecycleScope.launch {
+            val res: Result<String> = when (kind) {
+                "avatar" -> ModelDownloader.download(this@MainActivity, ModelDownloader.VRM_SAMPLE, "avatars", "Humayra_Sample.vrm", ::prog)
+                    .map { f -> cfg.addAvatar(AvatarProfile("Sample Goddess", "VRM", f.absolutePath)); cfg.activeAvatarPath = f.absolutePath; stage.loadAvatar(f.absolutePath); "✅ 3D VRM Ready!" }
+                "text_model" -> ModelDownloader.download(this@MainActivity, ModelDownloader.LLAMA_1B, "models", "Llama-3.2-1B-Q4.gguf", ::prog)
+                    .map { f -> cfg.localTextModelPath = f.absolutePath; "✅ Offline Llama-1B Ready!" }
                 else -> {
-                    ModelDownloader.download(this@MainActivity, ModelDownloader.SMOL_VLM, "models", "SmolVLM-500M-Q8.gguf") { tvStatus.text = it }.onSuccess { cfg.localVisionModelPath = it.absolutePath }
-                    ModelDownloader.download(this@MainActivity, ModelDownloader.SMOL_MM, "models", "mmproj-SmolVLM-Q8.gguf") { tvStatus.text = it }.onSuccess { cfg.localVisionMmprojPath = it.absolutePath }
+                    val r1 = ModelDownloader.download(this@MainActivity, ModelDownloader.SMOL_VLM, "models", "SmolVLM-500M-Q8.gguf", ::prog)
+                    if (r1.isFailure) Result.failure(r1.exceptionOrNull()!!) else {
+                        cfg.localVisionModelPath = r1.getOrThrow().absolutePath
+                        ModelDownloader.download(this@MainActivity, ModelDownloader.SMOL_MM, "models", "mmproj-SmolVLM-Q8.gguf", ::prog)
+                            .map { f -> cfg.localVisionMmprojPath = f.absolutePath; "✅ SmolVLM Vision Ready!" }
+                    }
                 }
             }
+            val msg = res.getOrElse { "❌ Error: ${it.message}" }
+            tvStatus.text = msg; tv.text = msg; dlg.setCancelable(true); dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.text = "Close"
         }
     }
     private fun initTts() {
-        tts = TextToSpeech(this) { if (it == TextToSpeech.SUCCESS) tts?.language = Locale("bn", "IN") }.apply {
-            setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(id: String?) { runOnUiThread { stage.setSpeaking(true); tvOrbState.text = "Speaking..." } }
-                override fun onDone(id: String?) { runOnUiThread { stage.setSpeaking(false); if (pageVoiceOrb.visibility == View.VISIBLE && cfg.handsFreeLoop && cfg.masterEnabled) startMic(true) } }
-                @Deprecated("Deprecated") override fun onError(id: String?) { runOnUiThread { stage.setSpeaking(false) } }
-            })
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                ttsReady = true; tts?.language = Locale("bn", "IN")
+                tts?.setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(id: String?) { runOnUiThread { stage.setSpeaking(true); tvOrbState.text = "Speaking..." } }
+                    override fun onDone(id: String?) { runOnUiThread {
+                        stage.setSpeaking(false)
+                        if (pageVoiceOrb.visibility == View.VISIBLE && cfg.handsFreeLoop && cfg.masterEnabled) {
+                            tvOrbState.text = "Listening..."; lifecycleScope.launch { delay(380); if (pageVoiceOrb.visibility == View.VISIBLE) startMic(true) }
+                        }
+                    } }
+                    @Deprecated("Deprecated") override fun onError(id: String?) { runOnUiThread {
+                        stage.setSpeaking(false)
+                        if (pageVoiceOrb.visibility == View.VISIBLE && cfg.handsFreeLoop && cfg.masterEnabled) {
+                            lifecycleScope.launch { delay(450); if (pageVoiceOrb.visibility == View.VISIBLE) startMic(true) }
+                        }
+                    } }
+                })
+            }
         }
     }
     private fun speak(t: String) {
-        if (!cfg.readAloud || !cfg.masterEnabled) return
-        tts?.language = when { Regex("[\\u0980-\\u09FF]").containsMatchIn(t) -> Locale("bn", "IN"); Regex("[\\u0900-\\u097F]").containsMatchIn(t) -> Locale("hi", "IN"); else -> Locale.US }
-        val sp = VoiceHelper.cleanForSpeech(t); if (sp.isBlank()) return; if (pageVoiceOrb.visibility == View.VISIBLE) tvOrbReply.text = sp; VoiceHelper.applyFemaleVoice(tts, sp, cfg.ttsPitch, cfg.ttsSpeed, cfg.preferredVoiceName); tts?.speak(sp, TextToSpeech.QUEUE_FLUSH, Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "u") }, "u")
+        val inOrb = pageVoiceOrb.visibility == View.VISIBLE
+        if (!cfg.masterEnabled || (!cfg.readAloud && !inOrb)) return
+        val sp = VoiceHelper.cleanForSpeech(t); if (sp.isBlank()) { if (inOrb && cfg.handsFreeLoop) startMic(true); return }
+        runCatching { sr?.destroy(); sr = null }
+        if (inOrb) { tvOrbReply.text = sp; tvOrbState.text = "Speaking..." }
+        VoiceHelper.applyFemaleVoice(tts, sp, cfg.ttsPitch, cfg.ttsSpeed, cfg.preferredVoiceName)
+        val rc = if (ttsReady) tts?.speak(sp, TextToSpeech.QUEUE_FLUSH, Bundle().apply { putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "u") }, "u") else TextToSpeech.ERROR
+        if (rc != TextToSpeech.SUCCESS && inOrb && cfg.handsFreeLoop) lifecycleScope.launch { delay(900); if (pageVoiceOrb.visibility == View.VISIBLE) startMic(true) }
     }
     private fun startMic(orbMode: Boolean) {
         if (!cfg.masterEnabled) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { requestAllPerms(); return }
-        sr?.destroy(); sr = SpeechRecognizer.createSpeechRecognizer(this).apply {
+        runCatching { sr?.destroy(); sr = null }; var lastPart = ""
+        sr = SpeechRecognizer.createSpeechRecognizer(this).apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(p0: Bundle?) { tvStatus.text = "Listening..."; tvOrbState.text = "Listening..." }
                 override fun onRmsChanged(v: Float) { if (orbMode) { val s = 1f + (v.coerceIn(0f, 10f) / 14f); viewOrb.scaleX = s; viewOrb.scaleY = s } }
-                override fun onPartialResults(b: Bundle?) { val p = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull(); if (!p.isNullOrBlank()) tvOrbState.text = p }
+                override fun onPartialResults(b: Bundle?) { val p = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull(); if (!p.isNullOrBlank()) { lastPart = p; tvOrbState.text = p } }
                 override fun onResults(b: Bundle?) {
-                    val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                    if (t.isNotBlank()) { if (!orbMode) sendMsg(t) } else if (orbMode && cfg.handsFreeLoop) startMic(true)
+                    val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty().ifBlank { lastPart }
+                    lastPart = ""; runCatching { sr?.destroy(); sr = null }
+                    if (t.isNotBlank()) { if (orbMode) tvOrbState.text = "Thinking..."; sendMsg(t) }
+                    else if (orbMode && cfg.handsFreeLoop && pageVoiceOrb.visibility == View.VISIBLE) lifecycleScope.launch { delay(400); startMic(true) }
                 }
-                override fun onError(e: Int) { tvStatus.text = "Mic ready ($e)"; if (orbMode && cfg.handsFreeLoop && cfg.masterEnabled && (e == 6 || e == 7)) { tvOrbState.text = "Listening..."; lifecycleScope.launch { delay(550); if (pageVoiceOrb.visibility == View.VISIBLE) startMic(true) } } else tvOrbState.text = "Tap Orb to speak" }
+                override fun onError(e: Int) {
+                    val p = lastPart.trim(); lastPart = ""; runCatching { sr?.destroy(); sr = null }
+                    if (p.isNotBlank() && (e == 6 || e == 7 || e == 8)) { if (orbMode) tvOrbState.text = "Thinking..."; sendMsg(p); return }
+                    tvStatus.text = "Mic ready ($e)"
+                    if (orbMode && cfg.handsFreeLoop && cfg.masterEnabled && pageVoiceOrb.visibility == View.VISIBLE && e != 9) {
+                        tvOrbState.text = "Listening..."; lifecycleScope.launch { delay(600); if (pageVoiceOrb.visibility == View.VISIBLE) startMic(true) }
+                    } else tvOrbState.text = "Tap Orb to speak"
+                }
                 override fun onBeginningOfSpeech() {} override fun onBufferReceived(p0: ByteArray?) {} override fun onEndOfSpeech() {} override fun onEvent(p0: Int, p1: Bundle?) {}
             })
-            startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5).putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true))
+            val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true).putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3).putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1400L)
+            startListening(i)
         }
     }
     private fun openSettings() = SettingsSheet.show(this, SettingsCallbacks(

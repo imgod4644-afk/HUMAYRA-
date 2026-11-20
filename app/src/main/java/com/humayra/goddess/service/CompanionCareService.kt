@@ -28,8 +28,8 @@ class CompanionCareService : Service() {
     private suspend fun loopCare() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         while (scope.isActive) {
-            val cfg = AppConfig(this); if (!cfg.masterEnabled) { stopSelf(); break }
-            val scrOn = pm.isInteractive; val now = System.currentTimeMillis()
+            val cfg = AppConfig(this); if (!cfg.masterEnabled && !cfg.telegramHumanEnabled) { stopSelf(); break }
+            val scrOn = pm.isInteractive; val now = System.currentTimeMillis(); if (!cfg.masterEnabled) { if (cfg.telegramHumanEnabled) TelegramBridge.pollOnce(this); delay(if (scrOn) 8000L else 25000L); continue }
             if (scrOn && !lastScrOn) lastLiveMs = 0L; lastScrOn = scrOn
             if (cfg.telegramHumanEnabled) TelegramBridge.pollOnce(this)
             val t = if ((scrOn && now - lastLiveMs >= 16_000L) || now - lastCarePassMs >= 120_000L) PhoneDoctorTelemetry.collect(this, false) else null
