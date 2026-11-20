@@ -31,7 +31,7 @@ class CompanionCareService : Service() {
             val cfg = AppConfig(this); if (!cfg.masterEnabled) { stopSelf(); break }
             val scrOn = pm.isInteractive; val now = System.currentTimeMillis()
             if (scrOn && !lastScrOn) lastLiveMs = 0L; lastScrOn = scrOn
-            if (id == 3009 && cfg.telegramHumanEnabled) TelegramBridge.pollOnce(this)
+            if (cfg.telegramHumanEnabled) TelegramBridge.pollOnce(this)
             val t = if ((scrOn && now - lastLiveMs >= 16_000L) || now - lastCarePassMs >= 120_000L) PhoneDoctorTelemetry.collect(this, false) else null
             if (t != null && scrOn && now - lastLiveMs >= 16_000L) { lastLiveMs = now; pushLiveNotif(cfg, t) }
             if (t != null && now - lastCarePassMs >= 120_000L) {
