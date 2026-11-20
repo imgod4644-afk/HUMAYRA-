@@ -43,7 +43,7 @@ object CloudAiClient {
             ApiTarget("OPENROUTER", cleanKey(cfg.openrouterApiKey), cfg.openrouterModel),
             ApiTarget("OPENAI", cleanKey(cfg.openaiApiKey), cfg.openaiModel)
         ).filter { it.key.isNotEmpty() }.map { t ->
-            when { t.key.startsWith("AIza") -> t.copy(prov = "GEMINI"); t.key.startsWith("gsk_") -> t.copy(prov = "GROQ"); t.key.startsWith("sk-or-") -> t.copy(prov = "OPENROUTER"); else -> t }
+            when { t.key.startsWith("AIza") || t.key.startsWith("AQ.") -> t.copy(prov = "GEMINI"); t.key.startsWith("gsk_") -> t.copy(prov = "GROQ"); t.key.startsWith("sk-or-") -> t.copy(prov = "OPENROUTER"); else -> t }
         }
         val pri = cfg.cloudProvider.uppercase()
         val base = (raw.filter { it.prov == pri } + raw.filter { it.prov != pri }).distinctBy { "${it.prov}:${it.key.take(8)}" }
@@ -110,7 +110,7 @@ object CloudAiClient {
     private fun callGemini(cfg: AppConfig, t: ApiTarget, sys: String, hist: List<ChatEntry>, userText: String, img: ByteArray?, onDelta: (String) -> Unit): String {
         val rawM = t.model.trim().removePrefix("models/")
         val model = if (rawM.isBlank() || rawM.contains("/") || rawM.contains("hermes", true)) "gemini-2.5-flash" else rawM
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=${t.key}"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
         val contents = JSONArray()
         hist.takeLast(6).forEach { h -> contents.put(JSONObject().put("role", if (h.role == "user") "user" else "model").put("parts", JSONArray().put(JSONObject().put("text", h.text)))) }
         val uParts = JSONArray().put(JSONObject().put("text", userText))
@@ -122,7 +122,7 @@ object CloudAiClient {
             listOf("HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT").forEach { s.put(JSONObject().put("category", it).put("threshold", "BLOCK_NONE")) }
             root.put("safetySettings", s)
         }
-        val req = Request.Builder().url(url).post(root.toString().toRequestBody("application/json".toMediaType())).build()
+        val req = Request.Builder().url(url).header("x-goog-api-key", t.key).post(root.toString().toRequestBody("application/json".toMediaType())).build()
         http.newCall(req).execute().use { res ->
             val raw = res.body?.string().orEmpty(); if (!res.isSuccessful) error("Gemini ${res.code}: ${raw.take(120)}")
             val parts = JSONObject(raw).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
@@ -136,7 +136,7 @@ object CloudAiClient {
             if (t.prov == "GEMINI") {
                 val p = JSONArray().put(JSONObject().put("text", "Transcribe this voice message accurately in its original language (Bangla/Hindi/Hinglish/Banglish/English). Output ONLY the transcription.")).put(JSONObject().put("inline_data", JSONObject().put("mime_type", mime).put("data", Base64.encodeToString(audio, Base64.NO_WRAP))))
                 val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", p)))
-                val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${t.key}").post(body.toString().toRequestBody("application/json".toMediaType())).build()
+                val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent").header("x-goog-api-key", t.key).post(body.toString().toRequestBody("application/json".toMediaType())).build()
                 http.newCall(req).execute().use { r -> JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")?.trim() }
             } else {
                 val mb = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("model", "whisper-large-v3-turbo").addFormDataPart("file", "voice.ogg", audio.toRequestBody(mime.toMediaType())).build()

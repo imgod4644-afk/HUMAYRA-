@@ -36,14 +36,14 @@ object SettingsSheet {
             UiKit.btn(ctx, c1, "📖 Tutorial & Guide") { cb.onTutorial() }
 
             val c2 = UiKit.card(ctx, root, "🧠 AI ENGINE & 1-KEY AUTO CONNECT")
-            val etUni = UiKit.secretEt(ctx, c2, "🔑 Paste ANY 1 Key (AIza / sk-or- / gsk_ / sk-)", "")
+            val etUni = UiKit.secretEt(ctx, c2, "🔑 Paste ANY 1 Key (AQ. / AIza / sk-or- / gsk_ / sk-)", "")
             val modes = listOf("HYBRID", "ONLINE", "OFFLINE")
             val spMode = Spinner(ctx).apply { adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, modes); setSelection(modes.indexOf(cfg.brainMode).coerceAtLeast(0)) }
             UiKit.lbl(ctx, c2, "AI Mode"); c2.addView(spMode)
             val provs = listOf("OPENROUTER", "GEMINI", "GROQ", "OPENAI")
             val spProv = Spinner(ctx).apply { adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, provs); setSelection(provs.indexOf(cfg.cloudProvider).coerceAtLeast(0)) }
             UiKit.lbl(ctx, c2, "Primary Provider"); c2.addView(spProv)
-            val etGemKey = UiKit.secretEt(ctx, c2, "Gemini Key (AIza...)", cfg.geminiApiKey)
+            val etGemKey = UiKit.secretEt(ctx, c2, "Gemini Key (AQ. / AIza...)", cfg.geminiApiKey)
             val etGemMod = UiKit.et(ctx, c2, "Gemini Model", cfg.geminiModel)
             val etOrKey = UiKit.secretEt(ctx, c2, "OpenRouter Key (sk-or-...)", cfg.openrouterApiKey)
             val etOrMod = UiKit.et(ctx, c2, "OpenRouter Model", cfg.openrouterModel)
@@ -115,7 +115,7 @@ object SettingsSheet {
                 cfg.groqApiKey = etGrqKey.text.toString().trim(); cfg.openaiApiKey = etOaiKey.text.toString().trim()
                 val uk = etUni.text.toString().trim().removePrefix("Bearer").replace(Regex("\\s+"), "")
                 if (uk.isNotEmpty()) when {
-                    uk.startsWith("AIza") -> { cfg.geminiApiKey = uk; cfg.cloudProvider = "GEMINI" }
+                    uk.startsWith("AIza") || uk.startsWith("AQ.") -> { cfg.geminiApiKey = uk; cfg.cloudProvider = "GEMINI" }
                     uk.startsWith("gsk_") -> { cfg.groqApiKey = uk; cfg.cloudProvider = "GROQ" }
                     uk.startsWith("sk-or-") -> { cfg.openrouterApiKey = uk; cfg.cloudProvider = "OPENROUTER" }
                     else -> { cfg.openaiApiKey = uk; cfg.cloudProvider = "OPENAI" }
