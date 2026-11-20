@@ -157,7 +157,7 @@ class MainActivity : AppCompatActivity() {
             val quick = if (img == null) DirectCommandRouter.matchQuick(this@MainActivity, text) else emptyList()
             if (quick.isNotEmpty()) {
                 val logs = ActionExecutor.executeAll(this@MainActivity, quick, actionCbs())
-                val sp = if (Regex("[\\u0980-\\u09FF]").containsMatchIn(text)) "একদম ঠিক আছে, করে দিচ্ছি!" else "Done! Switched it for you."
+                val hasErr = logs.any { it.startsWith("❌") || it.startsWith("⚠️") }; val sp = if (hasErr) logs.first() else if (Regex("[\\u0980-\\u09FF]").containsMatchIn(text)) "একদম ঠিক আছে, করে দিচ্ছি!" else "Done! Switched it for you."
                 mem.appendHistory("assistant", sp); tvConvo.text = "You: $text\n\n${cfg.companionName}: $sp"
                 if (cfg.uiTab == 0) tv3dReply.text = "$sp\n${logs.joinToString(" | ")}"
                 tvActionLog.text = logs.joinToString(" | "); tvActionLog.visibility = View.VISIBLE

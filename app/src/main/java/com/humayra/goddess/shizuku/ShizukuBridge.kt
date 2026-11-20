@@ -9,7 +9,7 @@ import rikka.shizuku.Shizuku
 
 object ShizukuBridge {
     @Volatile private var shell: IShellService? = null
-    @Volatile private var pendingWait: CompletableDeferred<IShellService?>? = null
+    @Volatile private val bindLock = kotlinx.coroutines.sync.Mutex(); private var pendingWait: CompletableDeferred<IShellService?>? = null
     private var boundArgs: Shizuku.UserServiceArgs? = null
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -26,19 +26,20 @@ object ShizukuBridge {
         runCatching {
             require(hasPermission()) { "Shizuku কানেক্ট বা অনুমোদিত নয়।" }
             require(CyberShield.isSafeShizukuCmd(cmd)) { "CyberShield Sandbox: অনিরাপদ কমান্ড ব্লক করা হয়েছে।" }
-            val s = shell ?: bindAndWait(ctx) ?: error("Shizuku Shell বাইন্ড হয়নি।")
+            val s = shell ?: bindAndWait(ctx) ?: bindAndWait(ctx) ?: error("Shizuku Shell বাইন্ড হয়নি।")
             s.exec(cmd)
         }
     }
 
     private suspend fun bindAndWait(ctx: Context): IShellService? {
+        shell?.let { return it }
+        val dbg = (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         val d = CompletableDeferred<IShellService?>().also { pendingWait = it }
         val args = boundArgs ?: Shizuku.UserServiceArgs(ComponentName(ctx.packageName, ShizukuShellService::class.java.name))
-            .daemon(false).processNameSuffix("humayra_sh").debuggable(false).version(2).also { boundArgs = it }
-        withContext(Dispatchers.Main) { try { Shizuku.bindUserService(args, conn) } catch (_: Throwable) { d.complete(null) } }
-        return withTimeoutOrNull(3000) { d.await() }.also { pendingWait = null }
+            .daemon(true).processNameSuffix("humayra_sh").debuggable(dbg).version(4).also { boundArgs = it }
+        withContext(Dispatchers.Main) { try { Shizuku.bindUserService(args, conn) } catch (_: Throwable) { if (!d.isCompleted) d.complete(null) } }
+        return withTimeoutOrNull(6000) { d.await() }.also { pendingWait = null }
     }
-
     suspend fun setWifi(ctx: Context, on: Boolean) = runShell(ctx, "svc wifi ${if (on) "enable" else "disable"}")
     suspend fun connectSavedWifi(ctx: Context, ssid: String, pass: String = ""): Result<String> {
         val s = ssid.replace("\"", "\\\"")

@@ -47,7 +47,7 @@ object CloudAiClient {
         }
         val pri = cfg.cloudProvider.uppercase()
         val base = (raw.filter { it.prov == pri } + raw.filter { it.prov != pri }).distinctBy { "${it.prov}:${it.key.take(8)}" }
-        if (base.size != 1) return base
+        val out = mutableListOf<ApiTarget>(); base.forEach { b -> when (b.prov) { "OPENROUTER" -> (listOf(b.model) + fastOpenRouterFallbacks()).filter { it.isNotBlank() }.distinct().take(4).forEach { out.add(b.copy(model = it)) }; "GEMINI" -> listOf(b.model, "gemini-2.5-flash", "gemini-2.0-flash").filter { it.isNotBlank() }.distinct().forEach { out.add(b.copy(model = it)) }; else -> out.add(b) } }; return out; if (false) return base
         val b = base[0]
         return when (b.prov) {
             "OPENROUTER" -> (listOf(b.model) + fastOpenRouterFallbacks()).filter { it.isNotBlank() }.distinct().take(5).map { b.copy(model = it) }
@@ -91,7 +91,7 @@ object CloudAiClient {
         } else msgs.put(JSONObject().put("role", "user").put("content", userText))
         val body = JSONObject().put("model", model).put("messages", msgs).put("temperature", 0.72).put("max_tokens", 700).put("stream", true)
         if (t.prov == "OPENROUTER") body.put("reasoning", JSONObject().put("effort", "low").put("exclude", true))
-        val req = Request.Builder().url(url).header("Authorization", "Bearer ${t.key}").header("HTTP-Referer", "https://humayra.local").header("X-Title", "HUMAYRA").post(body.toString().toRequestBody("application/json".toMediaType())).build()
+        val req = Request.Builder().url(url).header("Authorization", "Bearer ${t.key}").header("User-Agent", "Mozilla/5.0").header("HTTP-Referer", "https://humayra.local").header("X-Title", "HUMAYRA").post(body.toString().toRequestBody("application/json".toMediaType())).build()
         http.newCall(req).execute().use { res ->
             if (!res.isSuccessful) error("HTTP ${res.code}: ${res.body?.string().orEmpty().take(120)}")
             val sb = StringBuilder(); var inTag = false
@@ -123,9 +123,9 @@ object CloudAiClient {
             root.put("safetySettings", s)
         }
         val req = Request.Builder().url(url).header("x-goog-api-key", t.key).post(root.toString().toRequestBody("application/json".toMediaType())).build()
-        http.newCall(req).execute().use { res ->
-            val raw = res.body?.string().orEmpty(); if (!res.isSuccessful) error("Gemini ${res.code}: ${raw.take(120)}")
-            val parts = JSONObject(raw).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+        val resPair = listOf(req, Request.Builder().url("https://aiplatform.googleapis.com/v1/publishers/google/models/$model:generateContent?key=${t.key}").post(root.toString().toRequestBody("application/json".toMediaType())).build())
+            .firstNotNullOfOrNull { r -> http.newCall(r).execute().use { res -> val b = res.body?.string().orEmpty(); if (res.isSuccessful) b else null } } ?: error("Gemini 404/Err")
+        val parts = JSONObject(resPair).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             val txt = (0 until (parts?.length() ?: 0)).mapNotNull { i -> val p = parts?.optJSONObject(i); if (p != null && !p.isNull("text")) p.optString("text", "") else null }.joinToString("").trim()
             if (txt.isEmpty()) error("Gemini empty") else { onDelta(txt.replace(Regex("\\[\\[ACTIONS:[\\s\\S]*?]]"), "")); return txt }
         }
@@ -141,7 +141,7 @@ object CloudAiClient {
                 } else {
                     val p = JSONArray().put(JSONObject().put("text", "Transcribe this voice message accurately in its original language. Output ONLY the transcription.")).put(JSONObject().put("inline_data", JSONObject().put("mime_type", mime).put("data", Base64.encodeToString(audio, Base64.NO_WRAP))))
                     val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", p)))
-                    val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent").header("x-goog-api-key", t.key).post(body.toString().toRequestBody("application/json".toMediaType())).build()
+                    val u = if (t.key.startsWith("AQ.")) "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent?key=${t.key}" else "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"; val req = Request.Builder().url(u).header("x-goog-api-key", t.key).post(body.toString().toRequestBody("application/json".toMediaType())).build()
                     http.newCall(req).execute().use { r -> if (r.isSuccessful) JSONObject(r.body?.string().orEmpty()).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")?.trim() else null }
                 }
             }.getOrNull()

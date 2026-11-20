@@ -32,7 +32,8 @@ object DirectCommandRouter {
                 list.add(JSONObject().put("type", "flashlight").put("state", if (isOff) "off" else if (isOn) "on" else "toggle"))
             low.startsWith("open ") && t.length < 36 ->
                 list.add(JSONObject().put("type", "open_app").put("app", t.substring(5).trim()))
-            (low.contains("youtube") || low.contains("ইউটিউব")) && (low.contains("search") || low.contains("play") || low.contains("খুঁজ") || low.contains("চালা")) ->
+            (low.contains("firefox") || low.contains("chrome") || low.contains("browser") || low.contains("focus")) -> { val br = if (low.contains("firefox") || low.contains("focus")) "firefox" else if (low.contains("chrome")) "chrome" else "default"; val q = if (low.contains("youtube")) "https://youtube.com" else t; list.add(JSONObject().put("type", "browser_search").put("browser", br).put("query", q)) }
+            (low.contains("youtube") || low.contains("ইউটিউব")) && !low.contains("firefox") && !low.contains("chrome") && (low.contains("search") || low.contains("play") || low.contains("খুঁজ") || low.contains("চালা")) ->
                 t.replace(Regex("(?i)(open|youtube|and|search|play|on|এ|খুলে|সার্চ|চালাও|করো)"), "").trim().takeIf { it.isNotBlank() }?.let { list.add(JSONObject().put("type", "youtube_play").put("query", it)) }
         }
         return list
